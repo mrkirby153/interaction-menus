@@ -1,13 +1,13 @@
 plugins {
     id 'org.jetbrains.kotlin.jvm' version '1.6.10'
     id 'java'
+    id 'maven-publish'
 }
 
 group 'com.mrkirby153'
 version '1.0-SNAPSHOT'
 
 repositories {
-    mavenCentral()
     mavenCentral()
 }
 
@@ -21,4 +21,46 @@ dependencies {
 
 test {
     useJUnitPlatform()
+}
+
+java {
+    withSourcesJar()
+}
+task sourceJar(type: Jar, dependsOn: project.classes) {
+    classifier 'sources'
+}
+
+task javadocJar(type: Jar, dependsOn: project.javadoc) {
+    classifier 'javadoc'
+}
+
+
+String propertyOrEnv(property, env) {
+    return project.hasProperty(property) ? project.properties[property] : System.getenv(env)
+}
+
+def publishUrl() {
+    if (project.version.endsWith('-SNAPSHOT'))
+        return "https://repo.mrkirby153.com/repository/maven-snapshots/"
+    else
+        return "https://repo.mrkirby153.com/repository/maven-releases/"
+}
+
+publishing {
+    tasks.publish.dependsOn build
+    repositories {
+        maven {
+            name = "mrkirby153"
+            url = publishUrl()
+            credentials {
+                username propertyOrEnv('repositoryUsername', 'REPO_USERNAME')
+                password propertyOrEnv('repositoryPassword', 'REPO_PASS')
+            }
+        }
+    }
+    publications {
+        maven(MavenPublication) {
+            from(components.java)
+        }
+    }
 }
