@@ -78,7 +78,7 @@ class Menu<T : Enum<*>>(
                                 callbackId,
                                 buttonBuilder.value,
                                 buttonBuilder.emoji
-                            )
+                            ).withDisabled(!buttonBuilder.enabled)
                         }.toTypedArray(),
                         *it.selects.map { selectBuilder ->
                             val selectId = selectBuilder.id ?: UUID.randomUUID().toString()

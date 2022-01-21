@@ -60,6 +60,7 @@ class ButtonBuilder(
     var style = ButtonStyle.SECONDARY
     var onClick: ((InteractionHook) -> Unit)? = null
     var emoji: Emoji? = null
+    var enabled = true
 
     fun onClick(hook: (InteractionHook) -> Unit) {
         this.onClick = hook
