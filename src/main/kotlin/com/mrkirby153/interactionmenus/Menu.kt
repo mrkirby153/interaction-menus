@@ -24,6 +24,8 @@ class Menu<T : Enum<*>>(
     private var pages = mutableMapOf<T, PageBuilder.(Menu<T>) -> Unit>()
 
     private val registeredCallbacks = mutableMapOf<String, (InteractionHook) -> Unit>()
+    private val selectCallbacks =
+        mutableMapOf<String, (InteractionHook, List<SelectOption>) -> Unit>()
 
     val state = mutableMapOf<Any, Any?>()
     val pageState = mutableMapOf<T, MutableMap<Any, Any?>>()
@@ -63,6 +65,7 @@ class Menu<T : Enum<*>>(
 
             // Clear out the registered callbacks
             registeredCallbacks.clear()
+            selectCallbacks.clear()
 
             val built = PageBuilder()
             built.currPageBuilder(this)
@@ -89,7 +92,7 @@ class Menu<T : Enum<*>>(
                             val selectId = selectBuilder.id ?: UUID.randomUUID().toString()
                             selectBuilder.onChange?.run {
                                 log.trace("Registering menu callback for menu $selectId")
-                                registeredCallbacks[selectId] = this
+                                selectCallbacks[selectId] = this
                             }
                             SelectionMenu.create(selectId).apply {
                                 minValues = selectBuilder.min
@@ -133,9 +136,9 @@ class Menu<T : Enum<*>>(
         hook: InteractionHook
     ): Boolean {
         var executed = false
-        this.registeredCallbacks[id]?.apply {
+        this.selectCallbacks[id]?.apply {
             executed = true
-            this.invoke(hook)
+            this.invoke(hook, selectedOptions)
             log.trace("Triggered change callback for menu $id")
         }
         selectedOptions.forEach {

@@ -5,6 +5,7 @@ import net.dv8tion.jda.api.entities.Emoji
 import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.components.ButtonStyle
+import net.dv8tion.jda.api.interactions.components.selections.SelectOption
 
 @DslMarker
 annotation class PageDsl
@@ -71,7 +72,7 @@ class ButtonBuilder(
 class SelectMenuBuilder(
     val id: String? = null
 ) {
-    var onChange: ((InteractionHook) -> Unit)? = null
+    var onChange: ((InteractionHook, List<SelectOption>) -> Unit)? = null
     var options = mutableListOf<SelectOptionBuilder>()
 
     var min = 1
@@ -82,7 +83,7 @@ class SelectMenuBuilder(
         options.add(SelectOptionBuilder(id).apply(builder))
     }
 
-    fun onChange(hook: (InteractionHook) -> Unit) {
+    fun onChange(hook: (InteractionHook, List<SelectOption>) -> Unit) {
         this.onChange = hook
     }
 }
