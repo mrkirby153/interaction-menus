@@ -20,12 +20,13 @@ class Menu<T : Enum<*>>(
 ) {
     var id = UUID.randomUUID().toString()
     private val log = LogManager.getLogger("${this::class.java}:$id")
-    private var currentPage = initialPage
+    var currentPage = initialPage
     private var pages = mutableMapOf<T, PageBuilder.(Menu<T>) -> Unit>()
 
     private val registeredCallbacks = mutableMapOf<String, (InteractionHook) -> Unit>()
 
     val state = mutableMapOf<Any, Any?>()
+    val pageState = mutableMapOf<T, MutableMap<Any, Any?>>()
 
     var needsRender = false
 
@@ -37,6 +38,8 @@ class Menu<T : Enum<*>>(
     fun setPage(page: T) {
         log.trace("Setting page to $page")
         this.currentPage = page
+        // Clear the current page's state
+        pageState[page]?.clear()
         rerender()
     }
 
@@ -91,7 +94,8 @@ class Menu<T : Enum<*>>(
                             SelectionMenu.create(selectId).apply {
                                 minValues = selectBuilder.min
                                 maxValues = selectBuilder.max
-                                placeholder = selectBuilder.placeholder
+                                if (selectBuilder.placeholder != "")
+                                    placeholder = selectBuilder.placeholder
 
                                 addOptions(
                                     selectBuilder.options.map { selectOptionBuilder ->
@@ -144,8 +148,12 @@ class Menu<T : Enum<*>>(
         return executed
     }
 
-    inline fun <reified T> getState(key: Any): T? {
-        val data = state[key] ?: return null
+    inline fun <reified T> getState(key: Any, global: Boolean = false): T? {
+        val data = if (global) {
+            state[key]
+        } else {
+            pageState.computeIfAbsent(currentPage) { mutableMapOf() }[key]
+        } ?: return null
         if (data is T) {
             return data
         } else {
@@ -153,8 +161,12 @@ class Menu<T : Enum<*>>(
         }
     }
 
-    fun setState(key: Any, value: Any?) {
-        state[key] = value
+    fun setState(key: Any, value: Any?, global: Boolean = false) {
+        if (!global) {
+            pageState.computeIfAbsent(currentPage) { mutableMapOf() }[key] = value
+        } else {
+            state[key] = value
+        }
         rerender()
     }
 }
