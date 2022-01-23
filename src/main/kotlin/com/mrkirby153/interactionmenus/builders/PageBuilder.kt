@@ -76,6 +76,7 @@ class SelectMenuBuilder(
 
     var min = 1
     var max = 1
+    var placeholder = ""
 
     inline fun option(id: String? = null, builder: SelectOptionBuilder.() -> Unit) {
         options.add(SelectOptionBuilder(id).apply(builder))

@@ -91,6 +91,7 @@ class Menu<T : Enum<*>>(
                             SelectionMenu.create(selectId).apply {
                                 minValues = selectBuilder.min
                                 maxValues = selectBuilder.max
+                                placeholder = selectBuilder.placeholder
 
                                 addOptions(
                                     selectBuilder.options.map { selectOptionBuilder ->
@@ -154,5 +155,6 @@ class Menu<T : Enum<*>>(
 
     fun setState(key: Any, value: Any?) {
         state[key] = value
+        rerender()
     }
 }
