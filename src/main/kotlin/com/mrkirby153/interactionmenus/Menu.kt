@@ -25,6 +25,8 @@ class Menu<T : Enum<*>>(
 
     private val registeredCallbacks = mutableMapOf<String, (InteractionHook) -> Unit>()
 
+    val state = mutableMapOf<Any, Any?>()
+
     var needsRender = false
 
     fun page(page: T, builder: PageBuilder.(Menu<T>) -> Unit) {
@@ -139,5 +141,18 @@ class Menu<T : Enum<*>>(
             }
         }
         return executed
+    }
+
+    inline fun <reified T> getState(key: Any): T? {
+        val data = state[key] ?: return null
+        if (data is T) {
+            return data
+        } else {
+            throw ClassCastException("Cannot cast $data to provided type")
+        }
+    }
+
+    fun setState(key: Any, value: Any?) {
+        state[key] = value
     }
 }
