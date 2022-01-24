@@ -6,6 +6,7 @@ import net.dv8tion.jda.api.entities.MessageEmbed
 import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.components.ButtonStyle
 import net.dv8tion.jda.api.interactions.components.selections.SelectOption
+import java.util.UUID
 
 @DslMarker
 annotation class PageDsl
@@ -30,6 +31,16 @@ class PageBuilder {
 
     inline fun actionRow(builder: ActionRowBuilder.() -> Unit) {
         actionRows.add(ActionRowBuilder().apply(builder))
+    }
+
+    inline fun subPage(
+        currentPage: String?,
+        noinline onChange: (String) -> Unit,
+        builder: SubPageBuilder.() -> Unit
+    ) {
+        val subPage = SubPageBuilder(onChange).apply(builder)
+        actionRows.add(subPage.options(currentPage))
+        actionRows.addAll(subPage.build(currentPage))
     }
 }
 
@@ -100,5 +111,59 @@ class SelectOptionBuilder(
 
     fun onSelect(hook: (InteractionHook) -> Unit) {
         this.onChange = hook
+    }
+}
+
+@PageDsl
+class SubPageBuilder(
+    val onChange: (String) -> Unit
+) {
+
+    val pages = mutableMapOf<String, SelectOptionBuilder>()
+    val subPages = mutableMapOf<String, SubPageContentsBuilder>()
+
+    inline fun page(
+        name: String,
+        description: String,
+        icon: Emoji? = null,
+        builder: SubPageContentsBuilder.() -> Unit
+    ) {
+        val optionBuilder = SelectOptionBuilder().apply {
+            this.value = name
+            this.description = description
+            this.icon = icon
+            onSelect {
+                this@SubPageBuilder.onChange.invoke(name)
+            }
+        }
+        pages[name] = optionBuilder
+        subPages[name] = SubPageContentsBuilder().apply(builder)
+    }
+
+    fun build(currentPage: String?): List<ActionRowBuilder> {
+        return subPages[currentPage]?.actionRows ?: mutableListOf()
+    }
+
+    fun options(currentPage: String?): ActionRowBuilder {
+        return ActionRowBuilder().apply {
+            select {
+                this@SubPageBuilder.pages.forEach { (page, builder) ->
+                    if (page == currentPage) {
+                        builder.default = true
+                    }
+                    options.add(builder)
+                }
+            }
+        }
+    }
+
+    @PageDsl
+    class SubPageContentsBuilder {
+
+        val actionRows = mutableListOf<ActionRowBuilder>()
+
+        inline fun actionRow(builder: ActionRowBuilder.() -> Unit) {
+            this.actionRows.add(ActionRowBuilder().apply(builder))
+        }
     }
 }
