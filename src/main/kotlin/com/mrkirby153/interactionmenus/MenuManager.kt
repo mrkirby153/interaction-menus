@@ -1,12 +1,12 @@
 package com.mrkirby153.interactionmenus
 
 import net.dv8tion.jda.api.entities.MessageChannel
-import net.dv8tion.jda.api.events.interaction.ButtonClickEvent
-import net.dv8tion.jda.api.events.interaction.SelectionMenuEvent
+import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
+import net.dv8tion.jda.api.events.interaction.component.SelectMenuInteractionEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
-import net.dv8tion.jda.api.interactions.Interaction
+import net.dv8tion.jda.api.interactions.components.ComponentInteraction
 import net.dv8tion.jda.api.requests.restaction.MessageAction
-import net.dv8tion.jda.api.requests.restaction.interactions.ReplyAction
+import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction
 import org.apache.logging.log4j.LogManager
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ScheduledThreadPoolExecutor
@@ -69,11 +69,11 @@ class MenuManager(
     @JvmOverloads
     fun reply(
         menu: Menu<*>,
-        interaction: Interaction,
+        interaction: ComponentInteraction,
         ephemeral: Boolean = false,
         timeout: Long = 5,
         timeUnit: TimeUnit = TimeUnit.MINUTES
-    ): ReplyAction {
+    ): ReplyCallbackAction {
         register(menu, timeout, timeUnit)
         return interaction.reply(menu.render()).setEphemeral(ephemeral)
     }
@@ -95,7 +95,8 @@ class MenuManager(
         }
     }
 
-    override fun onButtonClick(event: ButtonClickEvent) {
+
+    override fun onButtonInteraction(event: ButtonInteractionEvent) {
         registeredMenus.forEach {
             try {
                 if (it.menu.triggerButtonCallback(event.componentId, event.hook)) {
@@ -114,12 +115,12 @@ class MenuManager(
         }
     }
 
-    override fun onSelectionMenu(event: SelectionMenuEvent) {
+    override fun onSelectMenuInteraction(event: SelectMenuInteractionEvent) {
         registeredMenus.forEach {
             try {
                 if (it.menu.triggerSelectCallback(
                         event.componentId,
-                        event.selectedOptions ?: mutableListOf(),
+                        event.selectedOptions,
                         event.hook
                     )
                 ) {

@@ -5,9 +5,9 @@ import net.dv8tion.jda.api.MessageBuilder
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.components.ActionRow
-import net.dv8tion.jda.api.interactions.components.Button
+import net.dv8tion.jda.api.interactions.components.buttons.Button
+import net.dv8tion.jda.api.interactions.components.selections.SelectMenu
 import net.dv8tion.jda.api.interactions.components.selections.SelectOption
-import net.dv8tion.jda.api.interactions.components.selections.SelectionMenu
 import org.apache.logging.log4j.LogManager
 import java.util.UUID
 import kotlin.system.measureTimeMillis
@@ -94,7 +94,7 @@ class Menu<T : Enum<*>>(
                                 log.trace("Registering menu callback for menu $selectId")
                                 selectCallbacks[selectId] = this
                             }
-                            SelectionMenu.create(selectId).apply {
+                            SelectMenu.create(selectId).apply {
                                 minValues = selectBuilder.min
                                 maxValues = selectBuilder.max
                                 if (selectBuilder.placeholder != "")
