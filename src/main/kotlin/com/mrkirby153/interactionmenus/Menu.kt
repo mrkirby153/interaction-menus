@@ -1,6 +1,7 @@
 package com.mrkirby153.interactionmenus
 
 import com.mrkirby153.interactionmenus.builders.PageBuilder
+import com.mrkirby153.interactionmenus.builders.SubPageBuilder
 import net.dv8tion.jda.api.MessageBuilder
 import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.interactions.InteractionHook
@@ -19,7 +20,8 @@ import kotlin.system.measureTimeMillis
  * @param T The enum type representing the menu's page
  */
 class Menu<T : Enum<*>>(
-    initialPage: T
+    initialPage: T,
+    builder: (Menu<T>.() -> Unit)? = null
 ) {
     /**
      * This menu's ID
@@ -52,12 +54,27 @@ class Menu<T : Enum<*>>(
      */
     var needsRender = false
 
+    init {
+        if (builder != null) {
+            builder(this)
+        }
+    }
+
     /**
      * Adds the provided [page] to the menu
      */
     fun page(page: T, builder: PageBuilder.(Menu<T>) -> Unit) {
         log.trace("Registering builder for $page")
         pages[page] = builder
+    }
+
+    fun PageBuilder.subPage(name: String, builder: SubPageBuilder.() -> Unit) {
+        subPage(getState(name), { setState(name, it) }, builder)
+    }
+
+    @JvmName("subPageBuilder")
+    fun subPage(pageBuilder: PageBuilder, name: String, builder: SubPageBuilder.() -> Unit) {
+        pageBuilder.subPage(name, builder)
     }
 
     /**
