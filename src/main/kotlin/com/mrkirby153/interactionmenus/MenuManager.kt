@@ -13,10 +13,19 @@ import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
 
+/**
+ * Management class for [Menu]s
+ *
+ * @param threadFactory The factory to use when spawning the garbage collector
+ * @param gcPeriod How often the garbage collector should run
+ * @param gcUnits The time units on the gcPeriod
+ * @param gcPriority The priority that the garbage collector should have. Defaults to min priority
+ */
 class MenuManager(
     threadFactory: ThreadFactory? = null,
     gcPeriod: Long = 1,
-    gcUnits: TimeUnit = TimeUnit.SECONDS
+    gcUnits: TimeUnit = TimeUnit.SECONDS,
+    gcPriority: Int = Thread.MIN_PRIORITY
 ) : ListenerAdapter() {
 
     private val log = LogManager.getLogger()
@@ -29,6 +38,7 @@ class MenuManager(
                 Thread(it).apply {
                     name = "MenuCleanupThread"
                     isDaemon = true
+                    priority = gcPriority
                 }
             })
 
@@ -43,6 +53,12 @@ class MenuManager(
 
     private val registeredMenus = CopyOnWriteArrayList<RegisteredMenu>()
 
+    /**
+     * Registers the given [menu] with the manager. The menu will time out and be garbage collected
+     * after [timeout]. Specify [timeUnit] to change the units of [timeout]
+     *
+     * Defaults to a timeout of 5 minutes
+     */
     @JvmOverloads
     fun register(menu: Menu<*>, timeout: Long = 5, timeUnit: TimeUnit = TimeUnit.MINUTES) {
         val timeoutMs =
@@ -55,6 +71,14 @@ class MenuManager(
         )
     }
 
+    /**
+     * Sends the provided [menu] in the given [channel] as a **non-ephemeral** message.
+     *
+     * The menu will time out and be garbage collected after [timeout]. Specify [timeUnit] to change
+     * the time units.
+     *
+     * Defaults to a timeout of 5 minutes
+     */
     @JvmOverloads
     fun send(
         menu: Menu<*>,
@@ -66,6 +90,14 @@ class MenuManager(
         return channel.sendMessage(menu.render())
     }
 
+    /**
+     * Sends the provided [menu] as an [ephemeral] reply to the given [interaction].
+     *
+     * The menu will time out and be garbage collected after [timeout]. Specify [timeUnit] to change
+     * the time units.
+     *
+     * Defaults to a timeout of 5 minutes
+     */
     @JvmOverloads
     fun reply(
         menu: Menu<*>,

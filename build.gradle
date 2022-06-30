@@ -2,6 +2,7 @@ plugins {
     id 'org.jetbrains.kotlin.jvm' version '1.6.10'
     id 'java'
     id 'maven-publish'
+    id 'org.jetbrains.dokka' version '1.7.0'
 }
 
 group 'com.mrkirby153'
@@ -28,15 +29,11 @@ test {
 
 java {
     withSourcesJar()
-}
-task sourceJar(type: Jar, dependsOn: project.classes) {
-    classifier 'sources'
+    withJavadocJar()
 }
 
-task javadocJar(type: Jar, dependsOn: project.javadoc) {
-    classifier 'javadoc'
-}
-
+javadocJar.dependsOn dokkaJavadoc
+javadocJar.from dokkaJavadoc
 
 String propertyOrEnv(property, env) {
     return project.hasProperty(property) ? project.properties[property] : System.getenv(env)
@@ -66,4 +63,8 @@ publishing {
             from(components.java)
         }
     }
+}
+
+tasks.dokkaHtml.configure {
+    suppressInheritedMembers.set(true)
 }

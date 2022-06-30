@@ -14,12 +14,22 @@ import kotlin.system.measureTimeMillis
 
 /**
  * A menu is a list of pages that users can interact with
+ *
+ * @param initialPage The initial page of this menu
+ * @param T The enum type representing the menu's page
  */
 class Menu<T : Enum<*>>(
     initialPage: T
 ) {
+    /**
+     * This menu's ID
+     */
     var id = UUID.randomUUID().toString()
     private val log = LogManager.getLogger("${this::class.java}:$id")
+
+    /**
+     * The current page that this menu is on
+     */
     var currentPage = initialPage
     private var pages = mutableMapOf<T, PageBuilder.(Menu<T>) -> Unit>()
 
@@ -27,16 +37,32 @@ class Menu<T : Enum<*>>(
     private val selectCallbacks =
         mutableMapOf<String, (InteractionHook, List<SelectOption>) -> Unit>()
 
+    /**
+     * A global state repository for menu global states
+     */
     val state = mutableMapOf<Any, Any?>()
+
+    /**
+     * The repository for pages state
+     */
     val pageState = mutableMapOf<T, MutableMap<Any, Any?>>()
 
+    /**
+     * If the page should be re-rendered
+     */
     var needsRender = false
 
+    /**
+     * Adds the provided [page] to the menu
+     */
     fun page(page: T, builder: PageBuilder.(Menu<T>) -> Unit) {
         log.trace("Registering builder for $page")
         pages[page] = builder
     }
 
+    /**
+     * Sets the menu's page to the provided [page] and queues a rerender
+     */
     fun setPage(page: T) {
         log.trace("Setting page to $page")
         this.currentPage = page
@@ -46,7 +72,7 @@ class Menu<T : Enum<*>>(
     }
 
     /**
-     * The menu should be rerendered
+     * Marks the menu as dirty and needs a re-render
      */
     fun rerender() {
         log.trace("Marking for re-render")
@@ -104,7 +130,7 @@ class Menu<T : Enum<*>>(
                                     selectBuilder.options.map { selectOptionBuilder ->
                                         val optionId =
                                             selectOptionBuilder.id ?: UUID.randomUUID().toString()
-                                        selectOptionBuilder.onChange?.run {
+                                        selectOptionBuilder.onSelect?.run {
                                             log.trace("Registering onSelect callback for $optionId")
                                             registeredCallbacks[optionId] = this
                                         }
@@ -124,12 +150,18 @@ class Menu<T : Enum<*>>(
         return rendered
     }
 
+    /**
+     * Invokes the button callback for the provided [id] and [hook]
+     */
     fun triggerButtonCallback(id: String, hook: InteractionHook): Boolean {
         this.registeredCallbacks[id]?.invoke(hook) ?: return false
         log.trace("Triggered button callback $id")
         return true
     }
 
+    /**
+     * Invokes the select callback for the provided [id], [selectedOptions] and [hook]
+     */
     fun triggerSelectCallback(
         id: String,
         selectedOptions: List<SelectOption>,
@@ -151,12 +183,11 @@ class Menu<T : Enum<*>>(
         return executed
     }
 
-    inline fun <reified T> getState(key: Any, global: Boolean = false): T? {
-        val data = if (global) {
-            state[key]
-        } else {
-            pageState.computeIfAbsent(currentPage) { mutableMapOf() }[key]
-        } ?: return null
+    /**
+     * Retrieves the value from the state with the specified [key]
+     */
+    inline fun <reified T> getState(key: Any): T? {
+        val data = pageState.computeIfAbsent(currentPage) { mutableMapOf() }[key] ?: return null
         if (data is T) {
             return data
         } else {
@@ -164,12 +195,31 @@ class Menu<T : Enum<*>>(
         }
     }
 
-    fun setState(key: Any, value: Any?, global: Boolean = false) {
-        if (!global) {
-            pageState.computeIfAbsent(currentPage) { mutableMapOf() }[key] = value
+    /**
+     * Retrieves the value from the global state with the specified [key]
+     */
+    inline fun <reified T> getGlobalState(key: Any): T? {
+        val data = state[key] ?: return null
+        if (data is T) {
+            return data
         } else {
-            state[key] = value
+            throw ClassCastException("Cannot cast $data to provided type")
         }
+    }
+
+    /**
+     * Sets the provided [key] in the page's state to the given [value] and queues a rerender
+     */
+    fun setState(key: Any, value: Any?) {
+        pageState.computeIfAbsent(currentPage) { mutableMapOf() }[key] = value
+        rerender()
+    }
+
+    /**
+     * Sets the provided [key] in the menu's global state to the given [value] and queues a rerender
+     */
+    fun setStateGlobalState(key: Any, value: Any?) {
+        state[key] = value
         rerender()
     }
 }
