@@ -1,11 +1,14 @@
 package com.mrkirby153.interactionmenus
 
-import net.dv8tion.jda.api.entities.MessageChannel
+import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
+import net.dv8tion.jda.api.events.interaction.GenericInteractionCreateEvent
+import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.SelectMenuInteractionEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
+import net.dv8tion.jda.api.interactions.callbacks.IReplyCallback
 import net.dv8tion.jda.api.interactions.components.ComponentInteraction
-import net.dv8tion.jda.api.requests.restaction.MessageAction
+import net.dv8tion.jda.api.requests.restaction.MessageCreateAction
 import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction
 import org.apache.logging.log4j.LogManager
 import java.util.concurrent.CopyOnWriteArrayList
@@ -85,9 +88,9 @@ class MenuManager(
         channel: MessageChannel,
         timeout: Long = 5,
         timeUnit: TimeUnit = TimeUnit.MINUTES
-    ): MessageAction {
+    ): MessageCreateAction {
         register(menu, timeout, timeUnit)
-        return channel.sendMessage(menu.render())
+        return channel.sendMessage(menu.renderCreate())
     }
 
     /**
@@ -101,13 +104,13 @@ class MenuManager(
     @JvmOverloads
     fun reply(
         menu: Menu<*>,
-        interaction: ComponentInteraction,
+        interaction: IReplyCallback,
         ephemeral: Boolean = false,
         timeout: Long = 5,
         timeUnit: TimeUnit = TimeUnit.MINUTES
     ): ReplyCallbackAction {
         register(menu, timeout, timeUnit)
-        return interaction.reply(menu.render()).setEphemeral(ephemeral)
+        return interaction.reply(menu.renderCreate()).setEphemeral(ephemeral)
     }
 
     private fun garbageCollect() {
@@ -135,7 +138,7 @@ class MenuManager(
                     log.debug("Executed ${event.componentId}")
                     if (it.menu.needsRender) {
                         log.debug("Re-rendering ${it.menu.id}")
-                        event.editMessage(it.menu.render()).queue()
+                        event.editMessage(it.menu.renderEdit()).queue()
                         it.lastActivity = System.currentTimeMillis()
                     }
                     return
@@ -158,7 +161,7 @@ class MenuManager(
                 ) {
                     if (it.menu.needsRender) {
                         log.debug("Re-rendering ${it.menu.id}")
-                        event.editMessage(it.menu.render()).queue()
+                        event.editMessage(it.menu.renderEdit()).queue()
                         it.lastActivity = System.currentTimeMillis()
                     }
                     return

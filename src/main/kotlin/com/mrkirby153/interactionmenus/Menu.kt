@@ -1,14 +1,18 @@
 package com.mrkirby153.interactionmenus
 
 import com.mrkirby153.interactionmenus.builders.PageBuilder
+import com.mrkirby153.interactionmenus.builders.SelectOptionBuilder
 import com.mrkirby153.interactionmenus.builders.SubPageBuilder
-import net.dv8tion.jda.api.MessageBuilder
-import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.components.ActionRow
 import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.selections.SelectMenu
 import net.dv8tion.jda.api.interactions.components.selections.SelectOption
+import net.dv8tion.jda.api.utils.messages.AbstractMessageBuilder
+import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder
+import net.dv8tion.jda.api.utils.messages.MessageCreateData
+import net.dv8tion.jda.api.utils.messages.MessageEditBuilder
+import net.dv8tion.jda.api.utils.messages.MessageEditData
 import org.apache.logging.log4j.LogManager
 import java.util.UUID
 import kotlin.system.measureTimeMillis
@@ -96,12 +100,63 @@ class Menu<T : Enum<*>>(
         needsRender = true
     }
 
+    private fun doRender(pageBuilder: PageBuilder, builder: AbstractMessageBuilder<*, *>) {
+        builder.setContent(pageBuilder.text)
+        builder.setEmbeds(pageBuilder.getEmbeds())
+        val actionRows = pageBuilder.actionRows.map {
+            ActionRow.of(
+                *it.buttons.map { buttonBuilder ->
+                    val callbackId = buttonBuilder.id ?: UUID.randomUUID().toString()
+                    buttonBuilder.onClick?.run {
+                        log.trace("Registering callback for button $callbackId")
+                        registeredCallbacks[callbackId] = this
+                    }
+                    Button.of(
+                        buttonBuilder.style,
+                        callbackId,
+                        buttonBuilder.value,
+                        buttonBuilder.emoji
+                    ).withDisabled(!buttonBuilder.enabled)
+                }.toTypedArray(),
+                *it.selects.map { selectBuilder ->
+                    val selectId = selectBuilder.id ?: UUID.randomUUID().toString()
+                    selectBuilder.onChange?.run {
+                        log.trace("Registering menu callback for menu $selectId")
+                        selectCallbacks[selectId] = this
+                    }
+                    SelectMenu.create(selectId).apply {
+                        minValues = selectBuilder.min
+                        maxValues = selectBuilder.max
+                        if (selectBuilder.placeholder != "")
+                            placeholder = selectBuilder.placeholder
+
+                        addOptions(
+                            selectBuilder.options.map { selectOptionBuilder ->
+                                val optionId =
+                                    selectOptionBuilder.id ?: UUID.randomUUID().toString()
+                                selectOptionBuilder.onSelect?.run {
+                                    log.trace("Registering onSelect callback for $optionId")
+                                    registeredCallbacks[optionId] = this
+                                }
+                                SelectOption.of(selectOptionBuilder.value, optionId)
+                                    .withDescription(selectOptionBuilder.description)
+                                    .withDefault(selectOptionBuilder.default)
+                                    .withEmoji(selectOptionBuilder.icon)
+                            }
+                        )
+                    }.build()
+                }.toTypedArray()
+            )
+        }
+        builder.setComponents(actionRows)
+    }
+
     /**
-     * Renders the menu into a Message
+     * Renders the menu into a [MessageCreateData]
      */
-    fun render(): Message {
+    fun renderCreate(): MessageCreateData {
         log.debug("Starting render")
-        val rendered: Message
+        val rendered: MessageCreateData
         val renderTime = measureTimeMillis {
             val currPageBuilder =
                 pages[currentPage] ?: throw IllegalStateException("Current page is not registered")
@@ -110,58 +165,31 @@ class Menu<T : Enum<*>>(
             registeredCallbacks.clear()
             selectCallbacks.clear()
 
-            val built = PageBuilder()
-            built.currPageBuilder(this)
+            val pageBuilder = PageBuilder()
+            pageBuilder.currPageBuilder(this)
+            rendered = MessageCreateBuilder().apply { doRender(pageBuilder, this) }.build()
+        }
+        log.debug("Rendered in $renderTime. ${registeredCallbacks.size} callbacks registered")
+        return rendered
+    }
 
-            rendered = MessageBuilder().apply {
-                this.setContent(built.text)
-                this.setEmbeds(built.getEmbeds())
-                this.setActionRows(built.actionRows.map {
-                    ActionRow.of(
-                        *it.buttons.map { buttonBuilder ->
-                            val callbackId = buttonBuilder.id ?: UUID.randomUUID().toString()
-                            buttonBuilder.onClick?.run {
-                                log.trace("Registering callback for button $callbackId")
-                                registeredCallbacks[callbackId] = this
-                            }
-                            Button.of(
-                                buttonBuilder.style,
-                                callbackId,
-                                buttonBuilder.value,
-                                buttonBuilder.emoji
-                            ).withDisabled(!buttonBuilder.enabled)
-                        }.toTypedArray(),
-                        *it.selects.map { selectBuilder ->
-                            val selectId = selectBuilder.id ?: UUID.randomUUID().toString()
-                            selectBuilder.onChange?.run {
-                                log.trace("Registering menu callback for menu $selectId")
-                                selectCallbacks[selectId] = this
-                            }
-                            SelectMenu.create(selectId).apply {
-                                minValues = selectBuilder.min
-                                maxValues = selectBuilder.max
-                                if (selectBuilder.placeholder != "")
-                                    placeholder = selectBuilder.placeholder
+    /**
+     * Renders the menu into a [MessageEditData]
+     */
+    fun renderEdit(): MessageEditData {
+        log.debug("Starting edit render")
+        val rendered: MessageEditData
+        val renderTime = measureTimeMillis {
+            val currPageBuilder =
+                pages[currentPage] ?: throw IllegalStateException("Current page is not registered")
 
-                                addOptions(
-                                    selectBuilder.options.map { selectOptionBuilder ->
-                                        val optionId =
-                                            selectOptionBuilder.id ?: UUID.randomUUID().toString()
-                                        selectOptionBuilder.onSelect?.run {
-                                            log.trace("Registering onSelect callback for $optionId")
-                                            registeredCallbacks[optionId] = this
-                                        }
-                                        SelectOption.of(selectOptionBuilder.value, optionId)
-                                            .withDescription(selectOptionBuilder.description)
-                                            .withDefault(selectOptionBuilder.default)
-                                            .withEmoji(selectOptionBuilder.icon)
-                                    }
-                                )
-                            }.build()
-                        }.toTypedArray()
-                    )
-                })
-            }.build()
+            // Clear out the registered callbacks
+            registeredCallbacks.clear()
+            selectCallbacks.clear()
+
+            val pageBuilder = PageBuilder()
+            pageBuilder.currPageBuilder(this)
+            rendered = MessageEditBuilder().apply { doRender(pageBuilder, this) }.build()
         }
         log.debug("Rendered in $renderTime. ${registeredCallbacks.size} callbacks registered")
         return rendered
