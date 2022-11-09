@@ -8,6 +8,7 @@ import net.dv8tion.jda.api.interactions.components.ActionRow
 import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.selections.SelectMenu
 import net.dv8tion.jda.api.interactions.components.selections.SelectOption
+import net.dv8tion.jda.api.interactions.components.selections.StringSelectMenu
 import net.dv8tion.jda.api.utils.messages.AbstractMessageBuilder
 import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder
 import net.dv8tion.jda.api.utils.messages.MessageCreateData
@@ -124,7 +125,7 @@ class Menu<T : Enum<*>>(
                         log.trace("Registering menu callback for menu $selectId")
                         selectCallbacks[selectId] = this
                     }
-                    SelectMenu.create(selectId).apply {
+                    StringSelectMenu.create(selectId).apply {
                         minValues = selectBuilder.min
                         maxValues = selectBuilder.max
                         if (selectBuilder.placeholder != "")

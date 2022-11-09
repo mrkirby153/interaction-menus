@@ -1,13 +1,11 @@
 package com.mrkirby153.interactionmenus
 
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
-import net.dv8tion.jda.api.events.interaction.GenericInteractionCreateEvent
-import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
-import net.dv8tion.jda.api.events.interaction.component.SelectMenuInteractionEvent
+import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent
+import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent
 import net.dv8tion.jda.api.hooks.ListenerAdapter
 import net.dv8tion.jda.api.interactions.callbacks.IReplyCallback
-import net.dv8tion.jda.api.interactions.components.ComponentInteraction
 import net.dv8tion.jda.api.requests.restaction.MessageCreateAction
 import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction
 import org.apache.logging.log4j.LogManager
@@ -150,7 +148,7 @@ class MenuManager(
         }
     }
 
-    override fun onSelectMenuInteraction(event: SelectMenuInteractionEvent) {
+    override fun onStringSelectInteraction(event: StringSelectInteractionEvent) {
         registeredMenus.forEach {
             try {
                 if (it.menu.triggerSelectCallback(
@@ -171,7 +169,10 @@ class MenuManager(
                 event.reply(":warning: Error processing: ${e.message}").setEphemeral(true).queue()
             }
         }
+    }
 
+    override fun onEntitySelectInteraction(event: EntitySelectInteractionEvent) {
+        event.values
     }
 
     private data class RegisteredMenu(

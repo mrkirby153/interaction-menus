@@ -32,7 +32,7 @@ repositories {
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib"
     implementation 'org.apache.logging.log4j:log4j-core:2.19.0'
-    compileOnly "net.dv8tion:JDA:5.0.0-alpha.21"
+    compileOnly "net.dv8tion:JDA:5.0.0-alpha.22"
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'
 }
