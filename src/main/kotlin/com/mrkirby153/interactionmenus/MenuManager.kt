@@ -4,6 +4,8 @@ import mu.KotlinLogging
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
 import net.dv8tion.jda.api.events.GenericEvent
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
+import net.dv8tion.jda.api.events.interaction.component.GenericComponentInteractionCreateEvent
+import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent
 import net.dv8tion.jda.api.hooks.EventListener
 import net.dv8tion.jda.api.interactions.callbacks.IReplyCallback
 import net.dv8tion.jda.api.requests.restaction.MessageCreateAction
@@ -82,15 +84,37 @@ class MenuManager(
     }
 
     override fun onEvent(event: GenericEvent) {
+
+        fun maybeRerender(registeredMenu: RegisteredMenu) {
+            check(event is GenericComponentInteractionCreateEvent) { "Event was not a component interaction" }
+            if (registeredMenu.menu.dirty) {
+                log.trace { "Re-rendering menu ${registeredMenu.menu.id}" }
+                event.editMessage(registeredMenu.menu.renderEdit())
+                    .queue()
+                registeredMenu.lastActivity = System.currentTimeMillis()
+            }
+        }
+
         when (event) {
             is ButtonInteractionEvent -> {
                 registeredMenus.forEach {
                     if (it.menu.triggerCallback(event.componentId, event.hook)) {
-                        if (it.menu.dirty) {
-                            log.trace { "Re-rendering menu ${it.menu.id}" }
-                            event.editMessage(it.menu.renderEdit()).queue()
-                            it.lastActivity = System.currentTimeMillis()
-                        }
+                        maybeRerender(it)
+                        log.debug { "Executed callback ${event.componentId} for menu ${it.menu}" }
+                        return
+                    }
+                }
+            }
+
+            is StringSelectInteractionEvent -> {
+                registeredMenus.forEach {
+                    if (it.menu.triggerStringSelectCallback(
+                            event.componentId,
+                            event.selectedOptions,
+                            event.hook
+                        )
+                    ) {
+                        maybeRerender(it)
                         log.debug { "Executed callback ${event.componentId} for menu ${it.menu}" }
                         return
                     }

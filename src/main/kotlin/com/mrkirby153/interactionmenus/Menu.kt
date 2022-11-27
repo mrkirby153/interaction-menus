@@ -3,6 +3,7 @@ package com.mrkirby153.interactionmenus
 import com.mrkirby153.interactionmenus.builder.PageBuilder
 import mu.KotlinLogging
 import net.dv8tion.jda.api.interactions.InteractionHook
+import net.dv8tion.jda.api.interactions.components.selections.SelectOption
 import net.dv8tion.jda.api.utils.messages.AbstractMessageBuilder
 import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder
 import net.dv8tion.jda.api.utils.messages.MessageCreateData
@@ -13,6 +14,7 @@ import kotlin.system.measureTimeMillis
 
 
 internal typealias InteractionCallback = (InteractionHook) -> Unit
+internal typealias StringSelectCallback = (InteractionHook, List<SelectOption>) -> Unit
 private typealias PageCallback<Pages> = PageBuilder.(Menu<Pages>) -> Unit
 
 /**
@@ -42,6 +44,8 @@ class Menu<Pages : Enum<*>>(
      * Callbacks registered for interactions
      */
     private val callbacks = mutableMapOf<String, InteractionCallback>()
+
+    private val stringSelectCallbacks = mutableMapOf<String, StringSelectCallback>()
 
     /**
      * A list of pages registered in this menu
@@ -93,6 +97,31 @@ class Menu<Pages : Enum<*>>(
         }
     }
 
+    fun triggerStringSelectCallback(
+        id: String,
+        selected: List<SelectOption>,
+        hook: InteractionHook
+    ): Boolean {
+        var executed = false
+        try {
+            this.stringSelectCallbacks[id]?.apply {
+                executed = true
+                invoke(hook, selected)
+                log.trace { logMessage("Triggered onChange for component $id") }
+            }
+            selected.forEach {
+                this.callbacks[it.value]?.apply {
+                    executed = true
+                    invoke(hook)
+                    log.trace { logMessage("Triggered onSelect for $id") }
+                }
+            }
+        } catch (e: Exception) {
+            log.error(e) { logMessage("Caught exception invoking select callback $id") }
+        }
+        return executed
+    }
+
     internal fun renderEdit(): MessageEditData {
         log.debug { logMessage("Starting edit render of page $currentPage") }
         val builder: MessageEditBuilder
@@ -135,6 +164,7 @@ class Menu<Pages : Enum<*>>(
             )
         }
         callbacks.putAll(pageBuilder.interactionCallbacks)
+        stringSelectCallbacks.putAll(pageBuilder.stringSelectCallbacks)
         pageBuilder.build(builder)
     }
 
