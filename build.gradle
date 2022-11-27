@@ -6,7 +6,7 @@ plugins {
 }
 
 group 'com.mrkirby153'
-version '1.1-SNAPSHOT'
+version '2.0-SNAPSHOT'
 
 java.targetCompatibility = JavaVersion.VERSION_11
 java.sourceCompatibility = JavaVersion.VERSION_11
@@ -32,6 +32,7 @@ repositories {
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib"
     implementation 'org.apache.logging.log4j:log4j-core:2.19.0'
+    implementation 'io.github.microutils:kotlin-logging-jvm:3.0.4'
     compileOnly "net.dv8tion:JDA:5.0.0-alpha.22"
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.2'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.2'

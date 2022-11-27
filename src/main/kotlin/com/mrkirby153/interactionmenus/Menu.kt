@@ -1,271 +1,138 @@
 package com.mrkirby153.interactionmenus
 
-import com.mrkirby153.interactionmenus.builders.PageBuilder
-import com.mrkirby153.interactionmenus.builders.SelectOptionBuilder
-import com.mrkirby153.interactionmenus.builders.SubPageBuilder
+import com.mrkirby153.interactionmenus.builder.PageBuilder
+import mu.KotlinLogging
 import net.dv8tion.jda.api.interactions.InteractionHook
-import net.dv8tion.jda.api.interactions.components.ActionRow
-import net.dv8tion.jda.api.interactions.components.buttons.Button
-import net.dv8tion.jda.api.interactions.components.selections.SelectMenu
-import net.dv8tion.jda.api.interactions.components.selections.SelectOption
-import net.dv8tion.jda.api.interactions.components.selections.StringSelectMenu
 import net.dv8tion.jda.api.utils.messages.AbstractMessageBuilder
 import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder
 import net.dv8tion.jda.api.utils.messages.MessageCreateData
 import net.dv8tion.jda.api.utils.messages.MessageEditBuilder
 import net.dv8tion.jda.api.utils.messages.MessageEditData
-import org.apache.logging.log4j.LogManager
 import java.util.UUID
 import kotlin.system.measureTimeMillis
 
+
+internal typealias InteractionCallback = (InteractionHook) -> Unit
+private typealias PageCallback<Pages> = PageBuilder.(Menu<Pages>) -> Unit
+
 /**
- * A menu is a list of pages that users can interact with
- *
- * @param initialPage The initial page of this menu
- * @param T The enum type representing the menu's page
+ * A menu
  */
-class Menu<T : Enum<*>>(
-    initialPage: T,
-    builder: (Menu<T>.() -> Unit)? = null
+class Menu<Pages : Enum<*>>(
+    initialPage: Pages
 ) {
-    /**
-     * This menu's ID
-     */
-    var id = UUID.randomUUID().toString()
-    private val log = LogManager.getLogger("${this::class.java}:$id")
+    private val log = KotlinLogging.logger { }
 
     /**
-     * The current page that this menu is on
+     * The id of this menu
      */
-    var currentPage = initialPage
-    private var pages = mutableMapOf<T, PageBuilder.(Menu<T>) -> Unit>()
-
-    private val registeredCallbacks = mutableMapOf<String, (InteractionHook) -> Unit>()
-    private val selectCallbacks =
-        mutableMapOf<String, (InteractionHook, List<SelectOption>) -> Unit>()
+    internal var id: String = UUID.randomUUID().toString()
 
     /**
-     * A global state repository for menu global states
+     * The current page this menu is on
      */
-    val state = mutableMapOf<Any, Any?>()
-
-    /**
-     * The repository for pages state
-     */
-    val pageState = mutableMapOf<T, MutableMap<Any, Any?>>()
-
-    /**
-     * If the page should be re-rendered
-     */
-    var needsRender = false
-
-    init {
-        if (builder != null) {
-            builder(this)
+    var currentPage: Pages = initialPage
+        set(value) {
+            field = value
+            markDirty()
         }
-    }
 
     /**
-     * Adds the provided [page] to the menu
+     * Callbacks registered for interactions
      */
-    fun page(page: T, builder: PageBuilder.(Menu<T>) -> Unit) {
-        log.trace("Registering builder for $page")
-        pages[page] = builder
-    }
-
-    fun PageBuilder.subPage(name: String, builder: SubPageBuilder.() -> Unit) {
-        subPage(getState(name), { setState(name, it) }, builder)
-    }
-
-    @JvmName("subPageBuilder")
-    fun subPage(pageBuilder: PageBuilder, name: String, builder: SubPageBuilder.() -> Unit) {
-        pageBuilder.subPage(name, builder)
-    }
+    private val callbacks = mutableMapOf<String, InteractionCallback>()
 
     /**
-     * Sets the menu's page to the provided [page] and queues a rerender
+     * A list of pages registered in this menu
      */
-    fun setPage(page: T) {
-        log.trace("Setting page to $page")
-        this.currentPage = page
-        // Clear the current page's state
-        pageState[page]?.clear()
-        rerender()
-    }
+    private val pageBuilders = mutableMapOf<Pages, PageCallback<Pages>>()
 
     /**
-     * Marks the menu as dirty and needs a re-render
+     * If the contents of this menu changed, and it needs to be re-rendered
      */
-    fun rerender() {
-        log.trace("Marking for re-render")
-        needsRender = true
+    private var dirty = false
+
+    /**
+     * Registers a page with this menu
+     */
+    fun page(page: Pages, builder: PageCallback<Pages>) {
+        log.trace { logMessage("Registering page $page") }
+        check(!pageBuilders.containsKey(page)) { logMessage("Attempting to register a duplicate page $page") }
+        pageBuilders[page] = builder
     }
 
-    private fun doRender(pageBuilder: PageBuilder, builder: AbstractMessageBuilder<*, *>) {
-        builder.setContent(pageBuilder.text)
-        builder.setEmbeds(pageBuilder.getEmbeds())
-        val actionRows = pageBuilder.actionRows.map {
-            ActionRow.of(
-                *it.buttons.map { buttonBuilder ->
-                    val callbackId = buttonBuilder.id ?: UUID.randomUUID().toString()
-                    buttonBuilder.onClick?.run {
-                        log.trace("Registering callback for button $callbackId")
-                        registeredCallbacks[callbackId] = this
-                    }
-                    Button.of(
-                        buttonBuilder.style,
-                        callbackId,
-                        buttonBuilder.value,
-                        buttonBuilder.emoji
-                    ).withDisabled(!buttonBuilder.enabled)
-                }.toTypedArray(),
-                *it.selects.map { selectBuilder ->
-                    val selectId = selectBuilder.id ?: UUID.randomUUID().toString()
-                    selectBuilder.onChange?.run {
-                        log.trace("Registering menu callback for menu $selectId")
-                        selectCallbacks[selectId] = this
-                    }
-                    StringSelectMenu.create(selectId).apply {
-                        minValues = selectBuilder.min
-                        maxValues = selectBuilder.max
-                        if (selectBuilder.placeholder != "")
-                            placeholder = selectBuilder.placeholder
-
-                        addOptions(
-                            selectBuilder.options.map { selectOptionBuilder ->
-                                val optionId =
-                                    selectOptionBuilder.id ?: UUID.randomUUID().toString()
-                                selectOptionBuilder.onSelect?.run {
-                                    log.trace("Registering onSelect callback for $optionId")
-                                    registeredCallbacks[optionId] = this
-                                }
-                                SelectOption.of(selectOptionBuilder.value, optionId)
-                                    .withDescription(selectOptionBuilder.description)
-                                    .withDefault(selectOptionBuilder.default)
-                                    .withEmoji(selectOptionBuilder.icon)
-                            }
-                        )
-                    }.build()
-                }.toTypedArray()
+    fun markDirty() {
+        log.trace {
+            logMessage(
+                if (dirty) {
+                    "Already marked dirty previously"
+                } else {
+                    "Marking dirty"
+                }
             )
         }
-        builder.setComponents(actionRows)
+        dirty = true
     }
 
-    /**
-     * Renders the menu into a [MessageCreateData]
-     */
-    fun renderCreate(): MessageCreateData {
-        log.debug("Starting render")
-        val rendered: MessageCreateData
-        val renderTime = measureTimeMillis {
-            val currPageBuilder =
-                pages[currentPage] ?: throw IllegalStateException("Current page is not registered")
-
-            // Clear out the registered callbacks
-            registeredCallbacks.clear()
-            selectCallbacks.clear()
-
-            val pageBuilder = PageBuilder()
-            pageBuilder.currPageBuilder(this)
-            rendered = MessageCreateBuilder().apply { doRender(pageBuilder, this) }.build()
+    fun triggerCallback(id: String, hook: InteractionHook): Boolean {
+        val callback = callbacks[id] ?: return false
+        log.trace { logMessage("Triggering button callback $id") }
+        return try {
+            callback(hook)
+            true
+        } catch (e: Exception) {
+            log.error(e) { logMessage("Caught exception invoking button callback $id") }
+            false
         }
-        log.debug("Rendered in $renderTime. ${registeredCallbacks.size} callbacks registered")
-        return rendered
     }
 
-    /**
-     * Renders the menu into a [MessageEditData]
-     */
-    fun renderEdit(): MessageEditData {
-        log.debug("Starting edit render")
-        val rendered: MessageEditData
-        val renderTime = measureTimeMillis {
-            val currPageBuilder =
-                pages[currentPage] ?: throw IllegalStateException("Current page is not registered")
-
-            // Clear out the registered callbacks
-            registeredCallbacks.clear()
-            selectCallbacks.clear()
-
-            val pageBuilder = PageBuilder()
-            pageBuilder.currPageBuilder(this)
-            rendered = MessageEditBuilder().apply { doRender(pageBuilder, this) }.build()
-        }
-        log.debug("Rendered in $renderTime. ${registeredCallbacks.size} callbacks registered")
-        return rendered
-    }
-
-    /**
-     * Invokes the button callback for the provided [id] and [hook]
-     */
-    fun triggerButtonCallback(id: String, hook: InteractionHook): Boolean {
-        this.registeredCallbacks[id]?.invoke(hook) ?: return false
-        log.trace("Triggered button callback $id")
-        return true
-    }
-
-    /**
-     * Invokes the select callback for the provided [id], [selectedOptions] and [hook]
-     */
-    fun triggerSelectCallback(
-        id: String,
-        selectedOptions: List<SelectOption>,
-        hook: InteractionHook
-    ): Boolean {
-        var executed = false
-        this.selectCallbacks[id]?.apply {
-            executed = true
-            this.invoke(hook, selectedOptions)
-            log.trace("Triggered change callback for menu $id")
-        }
-        selectedOptions.forEach {
-            this.registeredCallbacks[it.value]?.apply {
-                executed = true
-                this.invoke(hook)
-                log.trace("Triggered onSelect callback for option $id")
+    internal fun renderEdit(): MessageEditData {
+        log.debug { logMessage("Starting edit render of page $currentPage") }
+        val builder: MessageEditBuilder
+        val timeMs = measureTimeMillis {
+            builder = MessageEditBuilder().apply {
+                commonRender(this)
             }
         }
-        return executed
+        log.debug { logMessage("Rendered edit in $timeMs ms. ${callbacks.size} callbacks currently registered") }
+        return builder.build()
     }
 
-    /**
-     * Retrieves the value from the state with the specified [key]
-     */
-    inline fun <reified T> getState(key: Any): T? {
-        val data = pageState.computeIfAbsent(currentPage) { mutableMapOf() }[key] ?: return null
-        if (data is T) {
-            return data
-        } else {
-            throw ClassCastException("Cannot cast $data to provided type")
+    internal fun renderCreate(): MessageCreateData {
+        log.debug { logMessage("Starting create render of page $currentPage") }
+        val builder: MessageCreateBuilder
+        val timeMs = measureTimeMillis {
+            builder = MessageCreateBuilder().apply {
+                commonRender(this)
+            }
         }
+        log.debug { logMessage("Rendered create in $timeMs ms. ${callbacks.size} callbacks currently registered") }
+        return builder.build()
     }
 
-    /**
-     * Retrieves the value from the global state with the specified [key]
-     */
-    inline fun <reified T> getGlobalState(key: Any): T? {
-        val data = state[key] ?: return null
-        if (data is T) {
-            return data
-        } else {
-            throw ClassCastException("Cannot cast $data to provided type")
+    private fun commonRender(builder: AbstractMessageBuilder<*, *>) {
+        callbacks.clear()
+
+        val targetPageBuilder = pageBuilders[this.currentPage]
+        checkNotNull(targetPageBuilder) { "Attempting to render a page that is not declared" }
+        val pageBuilder = PageBuilder().apply {
+            targetPageBuilder(this@Menu)
         }
+        log.trace {
+            logMessage(
+                "Registering callbacks with ids [${
+                    pageBuilder.interactionCallbacks.keys.joinToString(
+                        ","
+                    )
+                }]"
+            )
+        }
+        callbacks.putAll(pageBuilder.interactionCallbacks)
+        pageBuilder.build(builder)
     }
 
-    /**
-     * Sets the provided [key] in the page's state to the given [value] and queues a rerender
-     */
-    fun setState(key: Any, value: Any?) {
-        pageState.computeIfAbsent(currentPage) { mutableMapOf() }[key] = value
-        rerender()
-    }
+    private fun logMessage(message: String): String = "[$id]: $message"
 
-    /**
-     * Sets the provided [key] in the menu's global state to the given [value] and queues a rerender
-     */
-    fun setStateGlobalState(key: Any, value: Any?) {
-        state[key] = value
-        rerender()
-    }
+    override fun toString() = "Menu<$id>"
+
 }
