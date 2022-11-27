@@ -25,9 +25,15 @@ import java.net.URI
 import java.util.UUID
 
 
+/**
+ * Page Builder DSL marker annotation
+ */
 @DslMarker
 annotation class PageDsl
 
+/**
+ * A page builder is used to construct a page of a menu
+ */
 @PageDsl
 class PageBuilder {
 
@@ -40,16 +46,25 @@ class PageBuilder {
     internal val entitySelectCallbacks =
         mutableMapOf<String, EntitySelectCallback<out IMentionable>>()
 
+    /**
+     * Builds the page into the given [builder]. This modifies the builder in-place.
+     */
     fun build(builder: AbstractMessageBuilder<*, *>) {
         builder.setContent(text)
         builder.setComponents(actionRows)
         builder.setEmbeds(embeds)
     }
 
+    /**
+     * Adds an embed to the page
+     */
     fun addEmbed(embed: MessageEmbed) {
         embeds.add(embed)
     }
 
+    /**
+     * Adds an action row to the page
+     */
     fun actionRow(builder: ActionRowBuilder.() -> Unit) {
         val arb = ActionRowBuilder().apply(builder)
         actionRows.add(arb.build())
@@ -58,15 +73,24 @@ class PageBuilder {
         entitySelectCallbacks.putAll(arb.entitySelectCallbacks)
     }
 
+    /**
+     * Sets the text displayed on this page
+     */
     fun text(builder: StringBuilder.() -> Unit) {
         text = StringBuilder().apply(builder).toString()
     }
 
+    /**
+     * Sets the text displayed on this page to the given [text]
+     */
     fun text(text: String) {
         this.text = text
     }
 }
 
+/**
+ * A builder for an action row
+ */
 @PageDsl
 class ActionRowBuilder : Builder<ActionRow> {
 
@@ -86,6 +110,9 @@ class ActionRowBuilder : Builder<ActionRow> {
         return ActionRow.of(components)
     }
 
+    /**
+     * Adds a button with the given [text] to the action row
+     */
     fun button(text: String, builder: ButtonBuilder.() -> Unit) {
         check(selects.size == 0) { "Can't mix buttons and selects in the same action row" }
         val bb = ButtonBuilder(text).apply(builder)
@@ -96,6 +123,9 @@ class ActionRowBuilder : Builder<ActionRow> {
         buttons.add(bb.build())
     }
 
+    /**
+     * Adds a select with customizable strings to the action row
+     */
     fun stringSelect(builder: StringSelectBuilder.() -> Unit) {
         check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
         val ssb = StringSelectBuilder().apply(builder)
@@ -106,6 +136,9 @@ class ActionRowBuilder : Builder<ActionRow> {
         selects.add(ssb.build())
     }
 
+    /**
+     * Adds a mentionable select (Roles + Users) to the action row
+     */
     fun mentionableSelect(builder: EntitySelectBuilder<IMentionable>.() -> Unit) {
         check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
         val esb =
@@ -117,6 +150,9 @@ class ActionRowBuilder : Builder<ActionRow> {
         selects.add(esb.build())
     }
 
+    /**
+     * Adds a user select to the action row
+     */
     fun userSelect(builder: EntitySelectBuilder<User>.() -> Unit) {
         check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
         val esb = EntitySelectBuilder<User>(SelectTarget.ROLE, SelectTarget.USER).apply(builder)
@@ -128,6 +164,9 @@ class ActionRowBuilder : Builder<ActionRow> {
         selects.add(esb.build())
     }
 
+    /**
+     * Adds a role select to the action row
+     */
     fun roleSelect(builder: EntitySelectBuilder<Role>.() -> Unit) {
         check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
         val esb = EntitySelectBuilder<Role>(SelectTarget.ROLE).apply(builder)
@@ -139,7 +178,10 @@ class ActionRowBuilder : Builder<ActionRow> {
         selects.add(esb.build())
     }
 
-    fun channelSelect(vararg type: ChannelType, builder: EntitySelectBuilder<Channel>.() -> Unit) {
+    /**
+     * Adds a channel select to the action row
+     */
+    fun channelSelect(vararg type: ChannelType, builder: ChannelSelectBuilder.() -> Unit) {
         check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
         val esb = ChannelSelectBuilder(*type).apply(builder)
         val onSelect = esb.onSelect
@@ -152,6 +194,9 @@ class ActionRowBuilder : Builder<ActionRow> {
 
 }
 
+/**
+ * A builder for a button in an action row
+ */
 @PageDsl
 class ButtonBuilder(
     val text: String
@@ -160,6 +205,9 @@ class ButtonBuilder(
 
     internal var id = UUID.randomUUID().toString()
 
+    /**
+     * The style of the button
+     */
     var style = ButtonStyle.SECONDARY
         set(value) {
             check(!isLink) { "Links cannot have their style changed" }
@@ -168,12 +216,21 @@ class ButtonBuilder(
 
     internal var onClick: InteractionCallback? = null
 
+    /**
+     * The emoji to display in the button
+     */
     var emoji: Emoji? = null
 
+    /**
+     * If the button is enabled
+     */
     var enabled = true
 
     private var isLink = false
 
+    /**
+     * Registers the given [hook] as the onClick callback for this button
+     */
     fun onClick(hook: InteractionCallback) {
         check(!isLink) { "Can't define an onClick action for a button defined as a link" }
         if (this.onClick != null) {
@@ -182,6 +239,9 @@ class ButtonBuilder(
         this.onClick = hook
     }
 
+    /**
+     * Sets the URL that this button will open when cliked
+     */
     fun url(uri: URI) {
         this.id = uri.toASCIIString()
         this.style = ButtonStyle.LINK
@@ -193,10 +253,46 @@ class ButtonBuilder(
     }
 }
 
+/**
+ * Parent class for all select builders specifying common options
+ */
+sealed class SelectBuilder {
+    /**
+     * The placeholder that is displayed when nothing is selected
+     */
+    var placeholder: String? = null
+
+    /**
+     * If this select is disabled
+     */
+    var disabled = false
+
+    /**
+     * The minimum number of options that can be selected
+     */
+    var min = 1
+        set(value) {
+            check(value <= max) { "Min must be less than or equal to max" }
+            field = value
+        }
+
+    /**
+     * The maximum number of options that can be selected
+     */
+    var max = 1
+        set(value) {
+            check(max >= min) { "Max must be greater than or equal to min" }
+            field = value
+        }
+}
+
+/**
+ * A builder for an entity select
+ */
 @PageDsl
 open class EntitySelectBuilder<T : IMentionable>(
     private vararg val types: SelectTarget
-) : Builder<EntitySelectMenu> {
+) : SelectBuilder(), Builder<EntitySelectMenu> {
     init {
         if (types.size == 2) {
             check(SelectTarget.ROLE in types && SelectTarget.USER in types) { "Invalid combination of select types: [$types]" }
@@ -207,21 +303,23 @@ open class EntitySelectBuilder<T : IMentionable>(
 
     internal var onSelect: EntitySelectCallback<out T>? = null
 
-    var placeholder: String? = null
-    var disabled = false
-    var min = 1
-    var max = 1
     override fun build(): EntitySelectMenu {
         return EntitySelectMenu.create(id, types.toList()).setRequiredRange(min, max)
             .setPlaceholder(placeholder)
             .setDisabled(disabled).build()
     }
 
+    /**
+     * Registers the given [hook] as a callback for when the select is changed
+     */
     fun onSelect(hook: EntitySelectCallback<T>) {
         this.onSelect = hook
     }
 }
 
+/**
+ * A builder for selecting channels
+ */
 class ChannelSelectBuilder(private vararg val channelType: ChannelType) :
     EntitySelectBuilder<Channel>(SelectTarget.CHANNEL) {
     override fun build(): EntitySelectMenu {
@@ -229,20 +327,15 @@ class ChannelSelectBuilder(private vararg val channelType: ChannelType) :
     }
 }
 
+/**
+ * A string select builder
+ */
 @PageDsl
-class StringSelectBuilder : Builder<SelectMenu> {
+class StringSelectBuilder : SelectBuilder(), Builder<SelectMenu> {
 
     internal val id = UUID.randomUUID().toString()
 
     internal var onChange: StringSelectCallback? = null
-
-    var min = 1
-
-    var max = 1
-
-    var placeholder: String? = null
-
-    var disabled = false
 
     internal var callbacks = mutableMapOf<String, InteractionCallback>()
 
@@ -252,10 +345,16 @@ class StringSelectBuilder : Builder<SelectMenu> {
         StringSelectMenu.create(id).addOptions(options).setPlaceholder(placeholder)
             .setRequiredRange(min, max).setDisabled(disabled).build()
 
+    /**
+     * Registers the given [hook] that is fired when this select changes
+     */
     fun onChange(hook: StringSelectCallback) {
         this.onChange = hook
     }
 
+    /**
+     * Adds an option of the given [value] to this select
+     */
     fun option(value: String, builder: (StringSelectOptionBuilder.() -> Unit)? = null) {
         val optionBuilder = StringSelectOptionBuilder(value)
         builder?.invoke(optionBuilder)
@@ -267,8 +366,14 @@ class StringSelectBuilder : Builder<SelectMenu> {
     }
 }
 
+/**
+ * A builder for string select options
+ */
 @PageDsl
 class StringSelectOptionBuilder(
+    /**
+     * The name of the option
+     */
     val value: String
 ) : Builder<SelectOption> {
     private val log = KotlinLogging.logger { }
@@ -277,10 +382,24 @@ class StringSelectOptionBuilder(
 
     internal var onSelect: InteractionCallback? = null
 
+    /**
+     * If this option is default selected
+     */
     var default = false
+
+    /**
+     * The option's description
+     */
     var description: String? = null
+
+    /**
+     * The option's emoji icon
+     */
     var icon: Emoji? = null
 
+    /**
+     * Registers the given [hook] as a callback fired when this item is selected
+     */
     fun onSelect(hook: InteractionCallback) {
         if (this.onSelect != null) {
             log.warn { "Redefining onSelect for option $id ($value)" }

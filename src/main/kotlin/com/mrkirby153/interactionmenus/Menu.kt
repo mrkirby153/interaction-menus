@@ -77,6 +77,9 @@ open class Menu<Pages : Enum<*>>(
         pageBuilders[page] = builder
     }
 
+    /**
+     * Marks the menu as dirty and queues it for re-rendering
+     */
     fun markDirty() {
         log.trace {
             logMessage(
@@ -90,7 +93,7 @@ open class Menu<Pages : Enum<*>>(
         dirty = true
     }
 
-    fun triggerCallback(id: String, hook: InteractionHook): Boolean {
+    internal fun triggerCallback(id: String, hook: InteractionHook): Boolean {
         val callback = callbacks[id] ?: return false
         log.trace { logMessage("Triggering button callback $id") }
         return try {
@@ -102,7 +105,7 @@ open class Menu<Pages : Enum<*>>(
         }
     }
 
-    fun triggerStringSelectCallback(
+    internal fun triggerStringSelectCallback(
         id: String,
         selected: List<SelectOption>,
         hook: InteractionHook
@@ -127,7 +130,7 @@ open class Menu<Pages : Enum<*>>(
         return executed
     }
 
-    fun triggerEntitySelectCallback(
+    internal fun triggerEntitySelectCallback(
         id: String,
         selected: List<IMentionable>,
         hook: InteractionHook
@@ -196,11 +199,21 @@ open class Menu<Pages : Enum<*>>(
 
 }
 
+/**
+ * A menu but with state that is stored in-memory
+ *
+ * @param initialState The initial state of the menu
+ * @param stateBuilder A builder that creates an initial state for this menu
+ * @param initialPage The initial page of the menu
+ */
 class StatefulMenu<Pages : Enum<Pages>, State : Any> private constructor(
     initialPage: Pages,
     stateBuilder: (() -> State)? = null,
     initialState: State? = null
 ) : Menu<Pages>(initialPage) {
+    /**
+     * The menu's state
+     */
     var state = stateBuilder?.invoke() ?: initialState
     ?: throw IllegalArgumentException("Initial state must be provided")
 

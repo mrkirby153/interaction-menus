@@ -9,6 +9,9 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 import java.util.function.Consumer
 
+/**
+ * A [ReplyCallbackAction] that registers the [InteractionHook] of the Reply Callback with a [MenuManager.RegisteredMenu]
+ */
 class HookRegisteringCallback(
     private val action: ReplyCallbackAction,
     private val registeredMenu: MenuManager.RegisteredMenu

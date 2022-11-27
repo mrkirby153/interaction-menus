@@ -16,6 +16,14 @@ import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
 
+/**
+ * Management class for [Menu]s
+ *
+ * @param threadFactory The factory to use when spawning the garbage collector
+ * @param gcPeriod How often the garbage collector should run
+ * @param gcUnits The time units on the gcPeriod
+ * @param gcPriority The priority that the garbage collector should have. Defaults to min priority
+ */
 class MenuManager(
     threadFactory: ThreadFactory? = null,
     gcPeriod: Long = 1,
@@ -41,6 +49,9 @@ class MenuManager(
         cleanupThreadPool.scheduleAtFixedRate({ garbageCollect() }, 0, gcPeriod, gcUnits)
     }
 
+    /**
+     * Registers the provided [menu] to be managed. The menu will time out after the provided [timeout]
+     */
     fun register(
         menu: Menu<*>,
         timeout: Long = 5,
@@ -61,16 +72,14 @@ class MenuManager(
         return registeredMenu
     }
 
-    fun send(
-        menu: Menu<*>,
-        channel: MessageChannel,
-        timeout: Long = 5,
-        timeUnit: TimeUnit = TimeUnit.MINUTES
-    ): MessageCreateAction {
-        register(menu, timeout, timeUnit)
-        return channel.sendMessage(menu.renderCreate())
-    }
-
+    /**
+     * Sends teh provided [menu] as a reply to the given [hook].
+     *
+     * The menu will time out and be garbage collected after [timeout]. Specify [timeUnit] to change
+     * the time units.
+     *
+     * Defaults to a timeout of 5 minutes.
+     */
     fun reply(
         menu: Menu<*>,
         hook: IReplyCallback,
@@ -158,6 +167,9 @@ class MenuManager(
         }
     }
 
+    /**
+     * Data class storing a menu registered in a menu manager
+     */
     data class RegisteredMenu(
         val menu: Menu<*>,
         var lastActivity: Long,
