@@ -8,9 +8,11 @@ import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionE
 import net.dv8tion.jda.api.events.interaction.component.GenericComponentInteractionCreateEvent
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent
 import net.dv8tion.jda.api.hooks.EventListener
+import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.callbacks.IReplyCallback
 import net.dv8tion.jda.api.requests.restaction.MessageCreateAction
 import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction
+import net.dv8tion.jda.api.utils.messages.MessageEditBuilder
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
@@ -40,14 +42,20 @@ class MenuManager(
         cleanupThreadPool.scheduleAtFixedRate({ garbageCollect() }, 0, gcPeriod, gcUnits)
     }
 
-    fun register(menu: Menu<*>, timeout: Long = 5, timeUnit: TimeUnit = TimeUnit.MINUTES) {
+    fun register(
+        menu: Menu<*>,
+        timeout: Long = 5,
+        timeUnit: TimeUnit = TimeUnit.MINUTES
+    ): RegisteredMenu {
         check(timeout > 0) { "Timeout must be greater than 0" }
         val timeoutMs = TimeUnit.MILLISECONDS.convert(timeout, timeUnit)
         log.debug { "Registering menu $menu with a timeout of ${timeoutMs}ms" }
         check(registeredMenus.none { it.menu.id == menu.id }) { "Attempting to register a menu twice $menu" }
+        val registeredMenu = RegisteredMenu(menu, System.currentTimeMillis(), timeoutMs)
         synchronized(menuLock) {
-            registeredMenus.add(RegisteredMenu(menu, System.currentTimeMillis(), timeoutMs))
+            registeredMenus.add(registeredMenu)
         }
+        return registeredMenu
     }
 
     fun send(
@@ -67,8 +75,10 @@ class MenuManager(
         timeout: Long = 5,
         timeUnit: TimeUnit = TimeUnit.MINUTES
     ): ReplyCallbackAction {
-        register(menu, timeout, timeUnit)
-        return hook.reply(menu.renderCreate()).setEphemeral(ephemeral)
+        return HookRegisteringCallback(
+            hook.reply(menu.renderCreate()).setEphemeral(ephemeral),
+            register(menu, timeout, timeUnit)
+        )
     }
 
     private fun garbageCollect() {
@@ -78,6 +88,7 @@ class MenuManager(
                 if (it.timedOut) {
                     log.trace { "Removing menu $it, as it has timed out" }
                     removed += 1
+                    it.onTimeout()
                 }
                 it.timedOut
             }
@@ -104,6 +115,7 @@ class MenuManager(
                     if (it.menu.triggerCallback(event.componentId, event.hook)) {
                         maybeRerender(it)
                         log.debug { "Executed button callback ${event.componentId} for menu ${it.menu}" }
+                        it.hook = event.hook
                         return
                     }
                 }
@@ -119,6 +131,7 @@ class MenuManager(
                     ) {
                         maybeRerender(it, true)
                         log.debug { "Executed string select callback ${event.componentId} for menu ${it.menu}" }
+                        it.hook = event.hook
                         return
                     }
                 }
@@ -134,6 +147,7 @@ class MenuManager(
                     ) {
                         maybeRerender(it, true)
                         log.debug { "Executed entity select callback ${event.componentId} for menu ${it.menu}" }
+                        it.hook = event.hook
                         return
                     }
                 }
@@ -141,9 +155,26 @@ class MenuManager(
         }
     }
 
-    data class RegisteredMenu(val menu: Menu<*>, var lastActivity: Long, var timeout: Long) {
+    data class RegisteredMenu(
+        val menu: Menu<*>,
+        var lastActivity: Long,
+        var timeout: Long,
+        var hook: InteractionHook? = null
+    ) {
 
         val timedOut: Boolean
             get() = lastActivity + timeout < System.currentTimeMillis()
+
+
+        fun onTimeout() {
+            val hook = this.hook ?: return
+            log.debug { "Disabling all components in $menu as it has timed out" }
+            hook.retrieveOriginal().queue({ msg ->
+                hook.editOriginalComponents(msg.components.map { it.asDisabled() }).queue()
+                hook.deleteOriginal().queueAfter(2, TimeUnit.MINUTES)
+            }, {
+                log.trace { "Could not disable components for $menu: ${it.message}" }
+            })
+        }
     }
 }
