@@ -23,7 +23,7 @@ private typealias PageCallback<Pages> = PageBuilder.(Menu<Pages>) -> Unit
 /**
  * A menu
  */
-class Menu<Pages : Enum<*>>(
+open class Menu<Pages : Enum<*>>(
     initialPage: Pages,
     builder: (Menu<Pages>.() -> Unit)? = null
 ) {
@@ -193,5 +193,31 @@ class Menu<Pages : Enum<*>>(
     private fun logMessage(message: String): String = "[$id]: $message"
 
     override fun toString() = "Menu<$id>"
+
+}
+
+class StatefulMenu<Pages : Enum<Pages>, State : Any> private constructor(
+    initialPage: Pages,
+    stateBuilder: (() -> State)? = null,
+    initialState: State? = null
+) : Menu<Pages>(initialPage) {
+    var state = stateBuilder?.invoke() ?: initialState
+    ?: throw IllegalArgumentException("Initial state must be provided")
+
+    constructor(
+        initialPage: Pages,
+        state: State,
+        builder: (StatefulMenu<Pages, State>.() -> Unit)? = null
+    ) : this(initialPage, null, state) {
+        builder?.invoke(this)
+    }
+
+    constructor(
+        initialPage: Pages,
+        stateBuilder: (() -> State)?,
+        builder: (StatefulMenu<Pages, State>.() -> Unit) = {}
+    ) : this(initialPage, stateBuilder, null) {
+        builder.invoke(this)
+    }
 
 }
