@@ -73,12 +73,14 @@ class MenuManager(
 
     private fun garbageCollect() {
         var removed = 0
-        registeredMenus.removeIf {
-            if (it.timedOut) {
-                log.trace { "Removing menu $it, as it has timed out" }
-                removed += 1
+        synchronized(registeredMenus) {
+            registeredMenus.removeIf {
+                if (it.timedOut) {
+                    log.trace { "Removing menu $it, as it has timed out" }
+                    removed += 1
+                }
+                it.timedOut
             }
-            it.timedOut
         }
         if (removed > 0)
             log.debug { "Garbage collected $removed menus" }

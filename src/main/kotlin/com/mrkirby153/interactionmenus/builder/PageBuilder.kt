@@ -256,9 +256,9 @@ class StringSelectBuilder : Builder<SelectMenu> {
         this.onChange = hook
     }
 
-    fun option(value: String, builder: StringSelectOptionBuilder.() -> Unit) {
+    fun option(value: String, builder: (StringSelectOptionBuilder.() -> Unit)? = null) {
         val optionBuilder = StringSelectOptionBuilder(value)
-        builder(optionBuilder)
+        builder?.invoke(optionBuilder)
         options.add(optionBuilder.build())
         val callback = optionBuilder.onSelect
         if (callback != null) {
