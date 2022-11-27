@@ -4,6 +4,7 @@ import mu.KotlinLogging
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
 import net.dv8tion.jda.api.events.GenericEvent
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
+import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.GenericComponentInteractionCreateEvent
 import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionEvent
 import net.dv8tion.jda.api.hooks.EventListener
@@ -85,9 +86,9 @@ class MenuManager(
 
     override fun onEvent(event: GenericEvent) {
 
-        fun maybeRerender(registeredMenu: RegisteredMenu) {
+        fun maybeRerender(registeredMenu: RegisteredMenu, force: Boolean = false) {
             check(event is GenericComponentInteractionCreateEvent) { "Event was not a component interaction" }
-            if (registeredMenu.menu.dirty) {
+            if (registeredMenu.menu.dirty || force) {
                 log.trace { "Re-rendering menu ${registeredMenu.menu.id}" }
                 event.editMessage(registeredMenu.menu.renderEdit())
                     .queue()
@@ -100,7 +101,7 @@ class MenuManager(
                 registeredMenus.forEach {
                     if (it.menu.triggerCallback(event.componentId, event.hook)) {
                         maybeRerender(it)
-                        log.debug { "Executed callback ${event.componentId} for menu ${it.menu}" }
+                        log.debug { "Executed button callback ${event.componentId} for menu ${it.menu}" }
                         return
                     }
                 }
@@ -114,8 +115,23 @@ class MenuManager(
                             event.hook
                         )
                     ) {
-                        maybeRerender(it)
-                        log.debug { "Executed callback ${event.componentId} for menu ${it.menu}" }
+                        maybeRerender(it, true)
+                        log.debug { "Executed string select callback ${event.componentId} for menu ${it.menu}" }
+                        return
+                    }
+                }
+            }
+
+            is EntitySelectInteractionEvent -> {
+                registeredMenus.forEach {
+                    if (it.menu.triggerEntitySelectCallback(
+                            event.componentId,
+                            event.values,
+                            event.hook
+                        )
+                    ) {
+                        maybeRerender(it, true)
+                        log.debug { "Executed entity select callback ${event.componentId} for menu ${it.menu}" }
                         return
                     }
                 }

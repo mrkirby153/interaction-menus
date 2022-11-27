@@ -1,14 +1,22 @@
 package com.mrkirby153.interactionmenus.builder
 
+import com.mrkirby153.interactionmenus.EntitySelectCallback
 import com.mrkirby153.interactionmenus.InteractionCallback
 import com.mrkirby153.interactionmenus.StringSelectCallback
 import mu.KotlinLogging
+import net.dv8tion.jda.api.entities.IMentionable
 import net.dv8tion.jda.api.entities.MessageEmbed
+import net.dv8tion.jda.api.entities.Role
+import net.dv8tion.jda.api.entities.User
+import net.dv8tion.jda.api.entities.channel.Channel
+import net.dv8tion.jda.api.entities.channel.ChannelType
 import net.dv8tion.jda.api.entities.emoji.Emoji
 import net.dv8tion.jda.api.interactions.components.ActionRow
 import net.dv8tion.jda.api.interactions.components.ItemComponent
 import net.dv8tion.jda.api.interactions.components.buttons.Button
 import net.dv8tion.jda.api.interactions.components.buttons.ButtonStyle
+import net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu
+import net.dv8tion.jda.api.interactions.components.selections.EntitySelectMenu.SelectTarget
 import net.dv8tion.jda.api.interactions.components.selections.SelectMenu
 import net.dv8tion.jda.api.interactions.components.selections.SelectOption
 import net.dv8tion.jda.api.interactions.components.selections.StringSelectMenu
@@ -29,6 +37,8 @@ class PageBuilder {
     private val actionRows = mutableListOf<ActionRow>()
     internal val interactionCallbacks = mutableMapOf<String, InteractionCallback>()
     internal val stringSelectCallbacks = mutableMapOf<String, StringSelectCallback>()
+    internal val entitySelectCallbacks =
+        mutableMapOf<String, EntitySelectCallback<out IMentionable>>()
 
     fun build(builder: AbstractMessageBuilder<*, *>) {
         builder.setContent(text)
@@ -45,6 +55,7 @@ class PageBuilder {
         actionRows.add(arb.build())
         interactionCallbacks.putAll(arb.interactionCallbacks)
         stringSelectCallbacks.putAll(arb.stringSelectCallbacks)
+        entitySelectCallbacks.putAll(arb.entitySelectCallbacks)
     }
 
     fun text(builder: StringBuilder.() -> Unit) {
@@ -64,6 +75,8 @@ class ActionRowBuilder : Builder<ActionRow> {
 
     internal val interactionCallbacks = mutableMapOf<String, InteractionCallback>()
     internal val stringSelectCallbacks = mutableMapOf<String, StringSelectCallback>()
+    internal val entitySelectCallbacks =
+        mutableMapOf<String, EntitySelectCallback<out IMentionable>>()
 
 
     override fun build(): ActionRow {
@@ -91,6 +104,50 @@ class ActionRowBuilder : Builder<ActionRow> {
             stringSelectCallbacks[ssb.id] = onChange
         interactionCallbacks.putAll(ssb.callbacks)
         selects.add(ssb.build())
+    }
+
+    fun mentionableSelect(builder: EntitySelectBuilder<IMentionable>.() -> Unit) {
+        check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
+        val esb =
+            EntitySelectBuilder<IMentionable>(SelectTarget.ROLE, SelectTarget.USER).apply(builder)
+        val onSelect = esb.onSelect
+        if (onSelect != null) {
+            entitySelectCallbacks[esb.id] = onSelect
+        }
+        selects.add(esb.build())
+    }
+
+    fun userSelect(builder: EntitySelectBuilder<User>.() -> Unit) {
+        check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
+        val esb = EntitySelectBuilder<User>(SelectTarget.ROLE, SelectTarget.USER).apply(builder)
+        val onSelect = esb.onSelect
+        if (onSelect != null) {
+            @Suppress("UNCHECKED_CAST")
+            entitySelectCallbacks[esb.id] = onSelect as EntitySelectCallback<out IMentionable>
+        }
+        selects.add(esb.build())
+    }
+
+    fun roleSelect(builder: EntitySelectBuilder<Role>.() -> Unit) {
+        check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
+        val esb = EntitySelectBuilder<Role>(SelectTarget.ROLE).apply(builder)
+        val onSelect = esb.onSelect
+        if (onSelect != null) {
+            @Suppress("UNCHECKED_CAST")
+            entitySelectCallbacks[esb.id] = onSelect as EntitySelectCallback<out IMentionable>
+        }
+        selects.add(esb.build())
+    }
+
+    fun channelSelect(vararg type: ChannelType, builder: EntitySelectBuilder<Channel>.() -> Unit) {
+        check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
+        val esb = ChannelSelectBuilder(*type).apply(builder)
+        val onSelect = esb.onSelect
+        if (onSelect != null) {
+            @Suppress("UNCHECKED_CAST")
+            entitySelectCallbacks[esb.id] = onSelect as EntitySelectCallback<out IMentionable>
+        }
+        selects.add(esb.build())
     }
 
 }
@@ -137,6 +194,42 @@ class ButtonBuilder(
 }
 
 @PageDsl
+open class EntitySelectBuilder<T : IMentionable>(
+    private vararg val types: SelectTarget
+) : Builder<EntitySelectMenu> {
+    init {
+        if (types.size == 2) {
+            check(SelectTarget.ROLE in types && SelectTarget.USER in types) { "Invalid combination of select types: [$types]" }
+        }
+    }
+
+    internal val id = UUID.randomUUID().toString()
+
+    internal var onSelect: EntitySelectCallback<out T>? = null
+
+    var placeholder: String? = null
+    var disabled = false
+    var min = 1
+    var max = 1
+    override fun build(): EntitySelectMenu {
+        return EntitySelectMenu.create(id, types.toList()).setRequiredRange(min, max)
+            .setPlaceholder(placeholder)
+            .setDisabled(disabled).build()
+    }
+
+    fun onSelect(hook: EntitySelectCallback<T>) {
+        this.onSelect = hook
+    }
+}
+
+class ChannelSelectBuilder(private vararg val channelType: ChannelType) :
+    EntitySelectBuilder<Channel>(SelectTarget.CHANNEL) {
+    override fun build(): EntitySelectMenu {
+        return super.build().createCopy().setChannelTypes(*channelType).build()
+    }
+}
+
+@PageDsl
 class StringSelectBuilder : Builder<SelectMenu> {
 
     internal val id = UUID.randomUUID().toString()
@@ -149,13 +242,15 @@ class StringSelectBuilder : Builder<SelectMenu> {
 
     var placeholder: String? = null
 
+    var disabled = false
+
     internal var callbacks = mutableMapOf<String, InteractionCallback>()
 
     private val options = mutableListOf<SelectOption>()
 
     override fun build() =
         StringSelectMenu.create(id).addOptions(options).setPlaceholder(placeholder)
-            .setRequiredRange(min, max).build()
+            .setRequiredRange(min, max).setDisabled(disabled).build()
 
     fun onChange(hook: StringSelectCallback) {
         this.onChange = hook

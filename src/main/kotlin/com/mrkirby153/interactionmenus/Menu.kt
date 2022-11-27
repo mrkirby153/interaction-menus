@@ -2,6 +2,7 @@ package com.mrkirby153.interactionmenus
 
 import com.mrkirby153.interactionmenus.builder.PageBuilder
 import mu.KotlinLogging
+import net.dv8tion.jda.api.entities.IMentionable
 import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.components.selections.SelectOption
 import net.dv8tion.jda.api.utils.messages.AbstractMessageBuilder
@@ -15,6 +16,8 @@ import kotlin.system.measureTimeMillis
 
 internal typealias InteractionCallback = (InteractionHook) -> Unit
 internal typealias StringSelectCallback = (InteractionHook, List<SelectOption>) -> Unit
+internal typealias EntitySelectCallback<Mentionable> = (InteractionHook, List<Mentionable>) -> Unit
+
 private typealias PageCallback<Pages> = PageBuilder.(Menu<Pages>) -> Unit
 
 /**
@@ -46,6 +49,8 @@ class Menu<Pages : Enum<*>>(
     private val callbacks = mutableMapOf<String, InteractionCallback>()
 
     private val stringSelectCallbacks = mutableMapOf<String, StringSelectCallback>()
+    private val entitySelectCallbacks =
+        mutableMapOf<String, EntitySelectCallback<out IMentionable>>()
 
     /**
      * A list of pages registered in this menu
@@ -122,6 +127,22 @@ class Menu<Pages : Enum<*>>(
         return executed
     }
 
+    fun triggerEntitySelectCallback(
+        id: String,
+        selected: List<IMentionable>,
+        hook: InteractionHook
+    ): Boolean {
+        try {
+            this.entitySelectCallbacks[id]?.apply {
+                invoke(hook, selected)
+                return true
+            }
+        } catch (e: Exception) {
+            log.error(e) { logMessage("Caught exception invoking select callback $id") }
+        }
+        return false
+    }
+
     internal fun renderEdit(): MessageEditData {
         log.debug { logMessage("Starting edit render of page $currentPage") }
         val builder: MessageEditBuilder
@@ -165,6 +186,7 @@ class Menu<Pages : Enum<*>>(
         }
         callbacks.putAll(pageBuilder.interactionCallbacks)
         stringSelectCallbacks.putAll(pageBuilder.stringSelectCallbacks)
+        entitySelectCallbacks.putAll(pageBuilder.entitySelectCallbacks)
         pageBuilder.build(builder)
     }
 
