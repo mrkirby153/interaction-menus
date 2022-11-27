@@ -19,7 +19,8 @@ private typealias PageCallback<Pages> = PageBuilder.(Menu<Pages>) -> Unit
  * A menu
  */
 class Menu<Pages : Enum<*>>(
-    initialPage: Pages
+    initialPage: Pages,
+    builder: (Menu<Pages>.() -> Unit)? = null
 ) {
     private val log = KotlinLogging.logger { }
 
@@ -50,7 +51,13 @@ class Menu<Pages : Enum<*>>(
     /**
      * If the contents of this menu changed, and it needs to be re-rendered
      */
-    private var dirty = false
+    internal var dirty = false
+
+    init {
+        if (builder != null) {
+            builder(this)
+        }
+    }
 
     /**
      * Registers a page with this menu

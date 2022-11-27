@@ -45,6 +45,10 @@ class PageBuilder {
     fun text(builder: StringBuilder.() -> Unit) {
         text = StringBuilder().apply(builder).toString()
     }
+
+    fun text(text: String) {
+        this.text = text
+    }
 }
 
 @PageDsl
