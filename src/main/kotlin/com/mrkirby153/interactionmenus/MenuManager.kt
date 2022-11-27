@@ -12,7 +12,6 @@ import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.callbacks.IReplyCallback
 import net.dv8tion.jda.api.requests.restaction.MessageCreateAction
 import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction
-import net.dv8tion.jda.api.utils.messages.MessageEditBuilder
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
@@ -48,7 +47,11 @@ class MenuManager(
         timeUnit: TimeUnit = TimeUnit.MINUTES
     ): RegisteredMenu {
         check(timeout > 0) { "Timeout must be greater than 0" }
-        val timeoutMs = TimeUnit.MILLISECONDS.convert(timeout, timeUnit)
+        var timeoutMs = TimeUnit.MILLISECONDS.convert(timeout, timeUnit)
+        if (timeoutMs > TimeUnit.MILLISECONDS.convert(15, TimeUnit.MINUTES)) {
+            log.warn { "Timeout for menu $menu is > 15 minutes, setting to 15 minutes" }
+            timeoutMs = TimeUnit.MILLISECONDS.convert(15, TimeUnit.MINUTES)
+        }
         log.debug { "Registering menu $menu with a timeout of ${timeoutMs}ms" }
         check(registeredMenus.none { it.menu.id == menu.id }) { "Attempting to register a menu twice $menu" }
         val registeredMenu = RegisteredMenu(menu, System.currentTimeMillis(), timeoutMs)
@@ -161,6 +164,7 @@ class MenuManager(
         var timeout: Long,
         var hook: InteractionHook? = null
     ) {
+        private val log = KotlinLogging.logger {  }
 
         val timedOut: Boolean
             get() = lastActivity + timeout < System.currentTimeMillis()
@@ -171,9 +175,13 @@ class MenuManager(
             log.debug { "Disabling all components in $menu as it has timed out" }
             hook.retrieveOriginal().queue({ msg ->
                 hook.editOriginalComponents(msg.components.map { it.asDisabled() }).queue()
-                hook.deleteOriginal().queueAfter(2, TimeUnit.MINUTES)
+                hook.deleteOriginal().queueAfter(2, TimeUnit.MINUTES, {
+                    log.trace { "Deleted message for menu ${menu.id}" }
+                }, {
+                    log.trace { "Could not delete message for menu ${menu.id}: ${it.message}" }
+                })
             }, {
-                log.trace { "Could not disable components for $menu: ${it.message}" }
+                log.trace { "Could not disable components for ${menu.id}: ${it.message}" }
             })
         }
     }
