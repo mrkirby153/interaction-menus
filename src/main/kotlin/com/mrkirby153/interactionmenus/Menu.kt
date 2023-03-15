@@ -112,17 +112,17 @@ open class Menu<Pages : Enum<*>>(
     ): Boolean {
         var executed = false
         try {
-            this.stringSelectCallbacks[id]?.apply {
-                executed = true
-                invoke(hook, selected)
-                log.trace { logMessage("Triggered onChange for component $id") }
-            }
             selected.forEach {
                 this.callbacks[it.value]?.apply {
                     executed = true
                     invoke(hook)
                     log.trace { logMessage("Triggered onSelect for $id") }
                 }
+            }
+            this.stringSelectCallbacks[id]?.apply {
+                executed = true
+                invoke(hook, selected)
+                log.trace { logMessage("Triggered onChange for component $id") }
             }
         } catch (e: Exception) {
             log.error(e) { logMessage("Caught exception invoking select callback $id") }
