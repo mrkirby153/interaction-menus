@@ -46,6 +46,8 @@ class PageBuilder {
     internal val entitySelectCallbacks =
         mutableMapOf<String, EntitySelectCallback<out IMentionable>>()
 
+    internal var onShowHook: (() -> Unit)? = null
+
     /**
      * Builds the page into the given [builder]. This modifies the builder in-place.
      */
@@ -85,6 +87,13 @@ class PageBuilder {
      */
     fun text(text: String) {
         this.text = text
+    }
+
+    /**
+     * Runs the provided [callback] when the page is first rendered
+     */
+    fun onShow(callback: () -> Unit) {
+        this.onShowHook = callback
     }
 }
 

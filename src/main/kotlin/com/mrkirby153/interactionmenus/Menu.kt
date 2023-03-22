@@ -62,6 +62,8 @@ open class Menu<Pages : Enum<*>>(
      */
     internal var dirty = false
 
+    private var onShowPage: Pages? = null
+
     init {
         if (builder != null) {
             builder(this)
@@ -191,11 +193,19 @@ open class Menu<Pages : Enum<*>>(
         stringSelectCallbacks.putAll(pageBuilder.stringSelectCallbacks)
         entitySelectCallbacks.putAll(pageBuilder.entitySelectCallbacks)
         pageBuilder.build(builder)
+        callOnChange(pageBuilder)
     }
 
     private fun logMessage(message: String): String = "[$id]: $message"
 
     override fun toString() = "Menu<$id>"
+    private fun callOnChange(builder: PageBuilder) {
+        if (onShowPage != currentPage) {
+            log.trace { "Invoking onShow for page $currentPage" }
+            builder.onShowHook?.invoke()
+            onShowPage = currentPage
+        }
+    }
 
 }
 
