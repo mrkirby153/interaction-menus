@@ -1,7 +1,6 @@
 package com.mrkirby153.interactionmenus
 
 import mu.KotlinLogging
-import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel
 import net.dv8tion.jda.api.events.GenericEvent
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent
@@ -10,7 +9,6 @@ import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionE
 import net.dv8tion.jda.api.hooks.EventListener
 import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.callbacks.IReplyCallback
-import net.dv8tion.jda.api.requests.restaction.MessageCreateAction
 import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.ThreadFactory
@@ -91,6 +89,21 @@ class MenuManager(
             hook.reply(menu.renderCreate()).setEphemeral(ephemeral),
             register(menu, timeout, timeUnit)
         )
+    }
+
+    /**
+     * Deletes the given [menu]
+     */
+    fun deleteMenu(menu: Menu<*>) {
+        registeredMenus.firstOrNull { it.menu.id == menu.id }?.let { m ->
+            log.debug { "Deleting menu ${m.menu.id}" }
+            m.hook?.deleteOriginal()?.queue({
+                log.trace { "Deleted menu ${m.menu.id}" }
+                registeredMenus.removeIf { it.menu.id == menu.id }
+            }, {
+                log.trace { "Could not delete menu ${m.menu.id}: ${it.message}" }
+            })
+        }
     }
 
     private fun garbageCollect() {
@@ -176,7 +189,7 @@ class MenuManager(
         var timeout: Long,
         var hook: InteractionHook? = null
     ) {
-        private val log = KotlinLogging.logger {  }
+        private val log = KotlinLogging.logger { }
 
         val timedOut: Boolean
             get() = lastActivity + timeout < System.currentTimeMillis()
