@@ -122,9 +122,9 @@ class ActionRowBuilder : Builder<ActionRow> {
     /**
      * Adds a button with the given [text] to the action row
      */
-    fun button(text: String, builder: ButtonBuilder.() -> Unit) {
+    fun button(text: String, id: String? = null, builder: ButtonBuilder.() -> Unit) {
         check(selects.size == 0) { "Can't mix buttons and selects in the same action row" }
-        val bb = ButtonBuilder(text).apply(builder)
+        val bb = ButtonBuilder(text, id).apply(builder)
         val callback = bb.onClick
         if (callback != null) {
             interactionCallbacks[bb.id] = callback
@@ -135,9 +135,9 @@ class ActionRowBuilder : Builder<ActionRow> {
     /**
      * Adds a select with customizable strings to the action row
      */
-    fun stringSelect(builder: StringSelectBuilder.() -> Unit) {
+    fun stringSelect(id: String? = null, builder: StringSelectBuilder.() -> Unit) {
         check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
-        val ssb = StringSelectBuilder().apply(builder)
+        val ssb = StringSelectBuilder(id).apply(builder)
         val onChange = ssb.onChange
         if (onChange != null)
             stringSelectCallbacks[ssb.id] = onChange
@@ -148,10 +148,10 @@ class ActionRowBuilder : Builder<ActionRow> {
     /**
      * Adds a mentionable select (Roles + Users) to the action row
      */
-    fun mentionableSelect(builder: EntitySelectBuilder<IMentionable>.() -> Unit) {
+    fun mentionableSelect(id: String? = null, builder: EntitySelectBuilder<IMentionable>.() -> Unit) {
         check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
         val esb =
-            EntitySelectBuilder<IMentionable>(SelectTarget.ROLE, SelectTarget.USER).apply(builder)
+            EntitySelectBuilder<IMentionable>(SelectTarget.ROLE, SelectTarget.USER, id = id).apply(builder)
         val onSelect = esb.onSelect
         if (onSelect != null) {
             entitySelectCallbacks[esb.id] = onSelect
@@ -162,9 +162,9 @@ class ActionRowBuilder : Builder<ActionRow> {
     /**
      * Adds a user select to the action row
      */
-    fun userSelect(builder: EntitySelectBuilder<User>.() -> Unit) {
+    fun userSelect(id: String? = null, builder: EntitySelectBuilder<User>.() -> Unit) {
         check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
-        val esb = EntitySelectBuilder<User>(SelectTarget.ROLE, SelectTarget.USER).apply(builder)
+        val esb = EntitySelectBuilder<User>(SelectTarget.ROLE, SelectTarget.USER, id = id).apply(builder)
         val onSelect = esb.onSelect
         if (onSelect != null) {
             @Suppress("UNCHECKED_CAST")
@@ -176,9 +176,9 @@ class ActionRowBuilder : Builder<ActionRow> {
     /**
      * Adds a role select to the action row
      */
-    fun roleSelect(builder: EntitySelectBuilder<Role>.() -> Unit) {
+    fun roleSelect(id: String? = null, builder: EntitySelectBuilder<Role>.() -> Unit) {
         check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
-        val esb = EntitySelectBuilder<Role>(SelectTarget.ROLE).apply(builder)
+        val esb = EntitySelectBuilder<Role>(SelectTarget.ROLE, id = id).apply(builder)
         val onSelect = esb.onSelect
         if (onSelect != null) {
             @Suppress("UNCHECKED_CAST")
@@ -190,9 +190,9 @@ class ActionRowBuilder : Builder<ActionRow> {
     /**
      * Adds a channel select to the action row
      */
-    fun channelSelect(vararg type: ChannelType, builder: ChannelSelectBuilder.() -> Unit) {
+    fun channelSelect(id: String? = null, vararg type: ChannelType, builder: ChannelSelectBuilder.() -> Unit) {
         check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
-        val esb = ChannelSelectBuilder(*type).apply(builder)
+        val esb = ChannelSelectBuilder(*type, id = id).apply(builder)
         val onSelect = esb.onSelect
         if (onSelect != null) {
             @Suppress("UNCHECKED_CAST")
@@ -208,11 +208,12 @@ class ActionRowBuilder : Builder<ActionRow> {
  */
 @PageDsl
 class ButtonBuilder(
-    val text: String
+    val text: String,
+    id: String? = null
 ) : Builder<Button> {
     private val log = KotlinLogging.logger { }
 
-    internal var id = UUID.randomUUID().toString()
+    internal var id = id ?: UUID.randomUUID().toString()
 
     /**
      * The style of the button
@@ -300,7 +301,8 @@ sealed class SelectBuilder {
  */
 @PageDsl
 open class EntitySelectBuilder<T : IMentionable>(
-    private vararg val types: SelectTarget
+    private vararg val types: SelectTarget,
+    id: String? = null
 ) : SelectBuilder(), Builder<EntitySelectMenu> {
     init {
         if (types.size == 2) {
@@ -308,7 +310,7 @@ open class EntitySelectBuilder<T : IMentionable>(
         }
     }
 
-    internal val id = UUID.randomUUID().toString()
+    internal val id = id ?: UUID.randomUUID().toString()
 
     internal var onSelect: EntitySelectCallback<out T>? = null
 
@@ -329,8 +331,11 @@ open class EntitySelectBuilder<T : IMentionable>(
 /**
  * A builder for selecting channels
  */
-class ChannelSelectBuilder(private vararg val channelType: ChannelType) :
-    EntitySelectBuilder<Channel>(SelectTarget.CHANNEL) {
+class ChannelSelectBuilder(
+    private vararg val channelType: ChannelType,
+    id: String? = null
+) :
+    EntitySelectBuilder<Channel>(SelectTarget.CHANNEL, id = id) {
     override fun build(): EntitySelectMenu {
         return super.build().createCopy().setChannelTypes(*channelType).build()
     }
@@ -340,9 +345,11 @@ class ChannelSelectBuilder(private vararg val channelType: ChannelType) :
  * A string select builder
  */
 @PageDsl
-class StringSelectBuilder : SelectBuilder(), Builder<SelectMenu> {
+class StringSelectBuilder(
+    id: String? = null
+) : SelectBuilder(), Builder<SelectMenu> {
 
-    internal val id = UUID.randomUUID().toString()
+    internal val id = id ?: UUID.randomUUID().toString()
 
     internal var onChange: StringSelectCallback? = null
 
@@ -364,8 +371,8 @@ class StringSelectBuilder : SelectBuilder(), Builder<SelectMenu> {
     /**
      * Adds an option of the given [value] to this select
      */
-    fun option(value: String, builder: (StringSelectOptionBuilder.() -> Unit)? = null) {
-        val optionBuilder = StringSelectOptionBuilder(value)
+    fun option(value: String, id: String? = null, builder: (StringSelectOptionBuilder.() -> Unit)? = null) {
+        val optionBuilder = StringSelectOptionBuilder(value, id)
         builder?.invoke(optionBuilder)
         options.add(optionBuilder.build())
         val callback = optionBuilder.onSelect
@@ -383,11 +390,12 @@ class StringSelectOptionBuilder(
     /**
      * The name of the option
      */
-    val value: String
+    val value: String,
+    id: String? = null
 ) : Builder<SelectOption> {
     private val log = KotlinLogging.logger { }
 
-    internal val id = UUID.randomUUID().toString()
+    internal val id = id ?: UUID.randomUUID().toString()
 
     internal var onSelect: InteractionCallback? = null
 
