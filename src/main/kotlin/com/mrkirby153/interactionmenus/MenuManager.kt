@@ -9,6 +9,7 @@ import net.dv8tion.jda.api.events.interaction.component.StringSelectInteractionE
 import net.dv8tion.jda.api.hooks.EventListener
 import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.callbacks.IReplyCallback
+import net.dv8tion.jda.api.requests.RestAction
 import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.ThreadFactory
@@ -89,6 +90,21 @@ class MenuManager(
             hook.reply(menu.renderCreate()).setEphemeral(ephemeral),
             register(menu, timeout, timeUnit)
         )
+    }
+
+    /**
+     * Shows a menu directly
+     */
+    fun show(
+        menu: Menu<*>,
+        hook: InteractionHook,
+        timeout: Long = 5,
+        timeUnit: TimeUnit = TimeUnit.MINUTES
+    ): RestAction<*> {
+        val original = hook.editOriginal(menu.renderEdit())
+        val registeredMenu = register(menu, timeout, timeUnit)
+        registeredMenu.hook = hook
+        return original
     }
 
     /**
