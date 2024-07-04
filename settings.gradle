@@ -1,2 +1,3 @@
 rootProject.name = 'interaction-menus'
 
+include 'testbot'
