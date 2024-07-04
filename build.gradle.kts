@@ -4,7 +4,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 plugins {
     id("java")
     id("maven-publish")
-    id("org.jetbrains.dokka") version "1.9.0"
+    id("org.jetbrains.dokka") version "1.9.20"
     kotlin("jvm") version "1.9.0"
 }
 
@@ -18,7 +18,8 @@ group = "com.mrkirby153"
 dependencies {
     implementation("org.apache.logging.log4j:log4j-core:2.19.0")
     implementation("io.github.microutils:kotlin-logging-jvm:3.0.4")
-    compileOnly("net.dv8tion:JDA:5.0.0-beta.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0-RC")
+    compileOnly("net.dv8tion:JDA:5.0.0-beta.24")
 }
 
 kotlin {
