@@ -100,7 +100,7 @@ class MenuManager(
         timeUnit: TimeUnit = TimeUnit.MINUTES
     ): ReplyCallbackAction {
         return HookRegisteringCallback(
-            hook.reply(menu.renderCreate()).setEphemeral(ephemeral),
+            hook.reply(menu.renderCreate(coroutineScope)).setEphemeral(ephemeral),
             register(menu, timeout, timeUnit)
         )
     }
@@ -114,7 +114,7 @@ class MenuManager(
         timeout: Long = 5,
         timeUnit: TimeUnit = TimeUnit.MINUTES
     ): RestAction<*> {
-        val original = hook.editOriginal(menu.renderEdit())
+        val original = hook.editOriginal(menu.renderEdit(coroutineScope))
         val registeredMenu = register(menu, timeout, timeUnit)
         registeredMenu.hook = hook
         return original
@@ -164,7 +164,7 @@ class MenuManager(
         ) {
             if (registeredMenu.menu.dirty || force) {
                 log.trace { "Re-rendering menu ${registeredMenu.menu.id}" }
-                val result = registeredMenu.menu.renderEdit()
+                val result = registeredMenu.menu.renderEdit(coroutineScope)
                 registeredMenu.lastActivity = System.currentTimeMillis()
                 log.trace { "Sending over channel" }
                 editChannel.send(result)

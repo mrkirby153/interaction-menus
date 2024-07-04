@@ -13,6 +13,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.delay
 import net.dv8tion.jda.api.sharding.DefaultShardManagerBuilder
 import org.slf4j.LoggerFactory
+import java.util.concurrent.TimeUnit
 
 private val log = KotlinLogging.logger { }
 
@@ -45,6 +46,11 @@ fun main() {
         slashCommand("test-menu2") {
             run {
                 menuManager.show(statefulMenu(), deferReply(true).await()).await()
+            }
+        }
+        slashCommand("test-menu3") {
+            run {
+                menuManager.show(timeoutMenu(), deferReply(true).await()).await()
             }
         }
     }
@@ -95,6 +101,14 @@ private fun statefulMenu(): StatefulMenu<Pages, MenuState> {
                 }
             }
         }
+    }
+}
+
+private fun timeoutMenu() = Menu(Pages.ONE) {
+    page(Pages.ONE) {
+        renderTimeout(50, TimeUnit.MILLISECONDS)
+        delay(1_000)
+        text("This is text!")
     }
 }
 

@@ -93,7 +93,8 @@ class PageBuilder {
     }
 
     /**
-     * Runs the provided [callback] when the page is first rendered
+     * Runs the provided [callback] when the page is first rendered.
+     * This callback is executed **asynchronously**
      */
     fun onShow(
         timeout: Long? = null,
@@ -222,7 +223,8 @@ class ActionRowBuilder : Builder<ActionRow> {
         val onSelect = esb.onSelect
         if (onSelect != null) {
             @Suppress("UNCHECKED_CAST")
-            entitySelectCallbacks[esb.id] = BuiltAction(onSelect as EntitySelectCallback<out IMentionable>, esb.timeout)
+            entitySelectCallbacks[esb.id] =
+                BuiltAction(onSelect as EntitySelectCallback<out IMentionable>, esb.timeout)
         }
         selects.add(esb.build())
     }
