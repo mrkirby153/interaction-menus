@@ -20,6 +20,8 @@ dependencies {
     implementation("io.github.microutils:kotlin-logging-jvm:3.0.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0-RC")
     compileOnly("net.dv8tion:JDA:5.0.0-beta.24")
+
+    compileOnly("org.springframework.boot:spring-boot-autoconfigure:3.0.7")
 }
 
 kotlin {

@@ -1,6 +1,14 @@
 package com.mrkirby153.interactionmenus
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import mu.KotlinLogging
+import net.dv8tion.jda.api.entities.Message
 import net.dv8tion.jda.api.events.GenericEvent
 import net.dv8tion.jda.api.events.interaction.component.ButtonInteractionEvent
 import net.dv8tion.jda.api.events.interaction.component.EntitySelectInteractionEvent
@@ -11,9 +19,11 @@ import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.callbacks.IReplyCallback
 import net.dv8tion.jda.api.requests.RestAction
 import net.dv8tion.jda.api.requests.restaction.interactions.ReplyCallbackAction
+import net.dv8tion.jda.api.utils.messages.MessageEditData
 import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.ThreadFactory
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.EmptyCoroutineContext
 
 /**
  * Management class for [Menu]s
@@ -44,6 +54,9 @@ class MenuManager(
     private val menuLock = Any()
     private val registeredMenus = mutableListOf<RegisteredMenu>()
 
+    private val coroutineScope =
+        CoroutineScope(Dispatchers.Default + SupervisorJob() + EmptyCoroutineContext)
+
     init {
         cleanupThreadPool.scheduleAtFixedRate({ garbageCollect() }, 0, gcPeriod, gcUnits)
     }
@@ -72,14 +85,14 @@ class MenuManager(
     }
 
     /**
-     * Sends teh provided [menu] as a reply to the given [hook].
+     * Sends the provided [menu] as a reply to the given [hook].
      *
      * The menu will time out and be garbage collected after [timeout]. Specify [timeUnit] to change
      * the time units.
      *
      * Defaults to a timeout of 5 minutes.
      */
-    fun reply(
+    suspend fun reply(
         menu: Menu<*>,
         hook: IReplyCallback,
         ephemeral: Boolean = true,
@@ -95,7 +108,7 @@ class MenuManager(
     /**
      * Shows a menu directly
      */
-    fun show(
+    suspend fun show(
         menu: Menu<*>,
         hook: InteractionHook,
         timeout: Long = 5,
@@ -139,60 +152,120 @@ class MenuManager(
     }
 
     override fun onEvent(event: GenericEvent) {
+        if (event !is GenericComponentInteractionCreateEvent) {
+            return
+        }
 
-        fun maybeRerender(registeredMenu: RegisteredMenu, force: Boolean = false) {
-            check(event is GenericComponentInteractionCreateEvent) { "Event was not a component interaction" }
+        val editChannel = Channel<MessageEditData?>()
+
+        suspend fun maybeRerender(
+            registeredMenu: RegisteredMenu,
+            force: Boolean = false,
+        ) {
             if (registeredMenu.menu.dirty || force) {
                 log.trace { "Re-rendering menu ${registeredMenu.menu.id}" }
-                event.editMessage(registeredMenu.menu.renderEdit())
-                    .queue()
+                val result = registeredMenu.menu.renderEdit()
                 registeredMenu.lastActivity = System.currentTimeMillis()
+                log.trace { "Sending over channel" }
+                editChannel.send(result)
+            } else {
+                editChannel.send(null)
             }
         }
 
-        when (event) {
-            is ButtonInteractionEvent -> {
-                registeredMenus.forEach {
-                    if (it.menu.triggerCallback(event.componentId, event.hook)) {
-                        maybeRerender(it)
-                        log.debug { "Executed button callback ${event.componentId} for menu ${it.menu}" }
-                        it.hook = event.hook
-                        return
+        coroutineScope.launch {
+            var delayJob: Job? = null
+            var resultsJob: Job? = null
+            var isDeferred = false
+            var followMessage: Message? = null
+            launch {
+                var didProcess = false
+                // Main coroutine to handle the event
+                when (event) {
+                    is ButtonInteractionEvent -> {
+                        registeredMenus.forEach {
+                            if (it.menu.triggerCallback(event.componentId, event.hook)) {
+                                log.debug { "Triggered callback ${event.componentId}" }
+                                maybeRerender(it)
+                                log.debug { "Executed button callback ${event.componentId} for menu ${it.menu}" }
+                                it.hook = event.hook
+                                didProcess = true
+                            }
+                            return@forEach
+                        }
                     }
-                }
-            }
 
-            is StringSelectInteractionEvent -> {
-                registeredMenus.forEach {
-                    if (it.menu.triggerStringSelectCallback(
-                            event.componentId,
-                            event.selectedOptions,
-                            event.hook
-                        )
-                    ) {
-                        maybeRerender(it, true)
-                        log.debug { "Executed string select callback ${event.componentId} for menu ${it.menu}" }
-                        it.hook = event.hook
-                        return
+                    is StringSelectInteractionEvent -> {
+                        registeredMenus.forEach {
+                            if (it.menu.triggerStringSelectCallback(
+                                    event.componentId,
+                                    event.selectedOptions,
+                                    event.hook
+                                )
+                            ) {
+                                maybeRerender(it, true)
+                                log.debug { "Executed string select callback ${event.componentId} for menu ${it.menu}" }
+                                it.hook = event.hook
+                                didProcess = true
+                                return@forEach
+                            }
+                        }
                     }
-                }
-            }
 
-            is EntitySelectInteractionEvent -> {
-                registeredMenus.forEach {
-                    if (it.menu.triggerEntitySelectCallback(
-                            event.componentId,
-                            event.values,
-                            event.hook
-                        )
-                    ) {
-                        maybeRerender(it, true)
-                        log.debug { "Executed entity select callback ${event.componentId} for menu ${it.menu}" }
-                        it.hook = event.hook
-                        return
+                    is EntitySelectInteractionEvent -> {
+                        registeredMenus.forEach {
+                            if (it.menu.triggerEntitySelectCallback(
+                                    event.componentId,
+                                    event.values,
+                                    event.hook,
+                                )
+                            ) {
+                                maybeRerender(it, true)
+                                log.debug { "Executed entity select callback ${event.componentId} for menu ${it.menu}" }
+                                it.hook = event.hook
+                                didProcess = true
+                                return@forEach
+                            }
+                        }
+                    }
+                }
+                log.trace { "Cancelling delay job" }
+                delayJob?.cancel() // Finished, cancel the delay job
+                if (!didProcess) {
+                    log.trace { "Cancelling results job. No processing happened" }
+                    resultsJob?.cancel()
+                }
+            }
+            delayJob = launch {
+                // Coroutine to defer for 1 second
+                delay(1000)
+                log.trace { "Event is taking longer than 1 second to process. Deferring" }
+                isDeferred = true
+                event.deferEdit().await()
+                followMessage =
+                    event.hook.sendMessage("Updating the menu is taking longer than normal. Please wait")
+                        .setEphemeral(true).await()
+            }
+            resultsJob = launch {
+                log.trace { "Waiting for results" }
+                val result = editChannel.receive()
+                log.trace { "Got response" }
+                followMessage?.delete()?.await()
+                if (isDeferred) {
+                    if (result != null) {
+                        log.trace { "Deferred. Editing original!" }
+                        event.hook.editOriginal(result).await()
+                    }
+                } else {
+                    if (result != null) {
+                        log.trace { "Not Deferred. Editing!" }
+                        event.editMessage(result).await()
+                    } else {
+                        event.deferEdit().await()
                     }
                 }
             }
+            resultsJob.join()
         }
     }
 

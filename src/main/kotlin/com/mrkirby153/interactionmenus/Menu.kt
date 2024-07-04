@@ -1,6 +1,10 @@
 package com.mrkirby153.interactionmenus
 
+import com.mrkirby153.interactionmenus.builder.BuiltAction
 import com.mrkirby153.interactionmenus.builder.PageBuilder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import mu.KotlinLogging
 import net.dv8tion.jda.api.entities.IMentionable
 import net.dv8tion.jda.api.interactions.InteractionHook
@@ -14,9 +18,9 @@ import java.util.UUID
 import kotlin.system.measureTimeMillis
 
 
-internal typealias InteractionCallback = (InteractionHook) -> Unit
-internal typealias StringSelectCallback = (InteractionHook, List<SelectOption>) -> Unit
-internal typealias EntitySelectCallback<Mentionable> = (InteractionHook, List<Mentionable>) -> Unit
+internal typealias InteractionCallback = suspend CoroutineScope.(InteractionHook) -> Unit
+internal typealias StringSelectCallback = suspend CoroutineScope.(InteractionHook, List<SelectOption>) -> Unit
+internal typealias EntitySelectCallback<Mentionable> = suspend CoroutineScope.(InteractionHook, List<Mentionable>) -> Unit
 
 private typealias PageCallback<Pages> = PageBuilder.(Menu<Pages>) -> Unit
 
@@ -46,11 +50,11 @@ open class Menu<Pages : Enum<*>>(
     /**
      * Callbacks registered for interactions
      */
-    private val callbacks = mutableMapOf<String, InteractionCallback>()
+    private val callbacks = mutableMapOf<String, BuiltAction<InteractionCallback>>()
 
-    private val stringSelectCallbacks = mutableMapOf<String, StringSelectCallback>()
+    private val stringSelectCallbacks = mutableMapOf<String, BuiltAction<StringSelectCallback>>()
     private val entitySelectCallbacks =
-        mutableMapOf<String, EntitySelectCallback<out IMentionable>>()
+        mutableMapOf<String, BuiltAction<EntitySelectCallback<out IMentionable>>>()
 
     /**
      * A list of pages registered in this menu
@@ -95,11 +99,20 @@ open class Menu<Pages : Enum<*>>(
         dirty = true
     }
 
-    internal fun triggerCallback(id: String, hook: InteractionHook): Boolean {
+    internal suspend fun triggerCallback(
+        id: String,
+        hook: InteractionHook,
+    ): Boolean {
         val callback = callbacks[id] ?: return false
         log.trace { logMessage("Triggering button callback $id") }
         return try {
-            callback(hook)
+                try {
+                    withTimeout(callback.timeout) {
+                        callback.data(this, hook)
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    log.warn { logMessage("Button callback $id took too long to execute (${callback.timeout}ms)") }
+                }
             true
         } catch (e: Exception) {
             log.error(e) { logMessage("Caught exception invoking button callback $id") }
@@ -107,24 +120,36 @@ open class Menu<Pages : Enum<*>>(
         }
     }
 
-    internal fun triggerStringSelectCallback(
+    internal suspend fun triggerStringSelectCallback(
         id: String,
         selected: List<SelectOption>,
-        hook: InteractionHook
+        hook: InteractionHook,
     ): Boolean {
         var executed = false
         try {
             selected.forEach {
                 this.callbacks[it.value]?.apply {
                     executed = true
-                    invoke(hook)
                     log.trace { logMessage("Triggered onSelect for $id") }
+                    try {
+                        withTimeout(timeout) {
+                            data.invoke(this, hook)
+                        }
+                    } catch (e: TimeoutCancellationException) {
+                        log.warn { logMessage("An onSelect callback took too long to execute (${timeout}ms) ($id)") }
+                    }
                 }
             }
             this.stringSelectCallbacks[id]?.apply {
                 executed = true
-                invoke(hook, selected)
                 log.trace { logMessage("Triggered onChange for component $id") }
+                try {
+                    withTimeout(timeout) {
+                        data.invoke(this, hook, selected)
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    log.warn { logMessage("An onChange callback took too long to execute (${timeout}ms) ($id)") }
+                }
             }
         } catch (e: Exception) {
             log.error(e) { logMessage("Caught exception invoking select callback $id") }
@@ -132,14 +157,20 @@ open class Menu<Pages : Enum<*>>(
         return executed
     }
 
-    internal fun triggerEntitySelectCallback(
+    internal suspend fun triggerEntitySelectCallback(
         id: String,
         selected: List<IMentionable>,
-        hook: InteractionHook
+        hook: InteractionHook,
     ): Boolean {
         try {
             this.entitySelectCallbacks[id]?.apply {
-                invoke(hook, selected)
+                try {
+                    withTimeout(timeout) {
+                        data.invoke(this, hook, selected)
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    log.warn { logMessage("An onChange callback took too long to execute (${timeout}ms) ($id)") }
+                }
                 return true
             }
         } catch (e: Exception) {
@@ -148,7 +179,7 @@ open class Menu<Pages : Enum<*>>(
         return false
     }
 
-    internal fun renderEdit(): MessageEditData {
+    internal suspend fun renderEdit(): MessageEditData {
         log.debug { logMessage("Starting edit render of page $currentPage") }
         val builder: MessageEditBuilder
         val timeMs = measureTimeMillis {
@@ -160,7 +191,7 @@ open class Menu<Pages : Enum<*>>(
         return builder.build()
     }
 
-    internal fun renderCreate(): MessageCreateData {
+    internal suspend fun renderCreate(): MessageCreateData {
         log.debug { logMessage("Starting create render of page $currentPage") }
         val builder: MessageCreateBuilder
         val timeMs = measureTimeMillis {
@@ -172,7 +203,7 @@ open class Menu<Pages : Enum<*>>(
         return builder.build()
     }
 
-    private fun commonRender(builder: AbstractMessageBuilder<*, *>) {
+    private suspend fun commonRender(builder: AbstractMessageBuilder<*, *>) {
         callbacks.clear()
 
         val targetPageBuilder = pageBuilders[this.currentPage]
@@ -199,10 +230,17 @@ open class Menu<Pages : Enum<*>>(
     private fun logMessage(message: String): String = "[$id]: $message"
 
     override fun toString() = "Menu<$id>"
-    private fun callOnChange(builder: PageBuilder) {
+
+    private suspend fun callOnChange(builder: PageBuilder) {
         if (onShowPage != currentPage) {
             log.trace { "Invoking onShow for page $currentPage" }
-            builder.onShowHook?.invoke()
+            try {
+                withTimeout(builder.onShowTimeout) {
+                    builder.onShowHook?.invoke(this)
+                }
+            } catch (e: TimeoutCancellationException) {
+                log.warn { "onShow for page $currentPage took too long (${builder.onShowTimeout}ms)" }
+            }
             onShowPage = currentPage
         }
     }

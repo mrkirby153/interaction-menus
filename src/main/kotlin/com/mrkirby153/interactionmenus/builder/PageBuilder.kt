@@ -3,6 +3,7 @@ package com.mrkirby153.interactionmenus.builder
 import com.mrkirby153.interactionmenus.EntitySelectCallback
 import com.mrkirby153.interactionmenus.InteractionCallback
 import com.mrkirby153.interactionmenus.StringSelectCallback
+import kotlinx.coroutines.CoroutineScope
 import mu.KotlinLogging
 import net.dv8tion.jda.api.entities.IMentionable
 import net.dv8tion.jda.api.entities.MessageEmbed
@@ -23,6 +24,7 @@ import net.dv8tion.jda.api.interactions.components.selections.StringSelectMenu
 import net.dv8tion.jda.api.utils.messages.AbstractMessageBuilder
 import java.net.URI
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 
 /**
@@ -41,12 +43,13 @@ class PageBuilder {
 
     private val embeds = mutableListOf<MessageEmbed>()
     private val actionRows = mutableListOf<ActionRow>()
-    internal val interactionCallbacks = mutableMapOf<String, InteractionCallback>()
-    internal val stringSelectCallbacks = mutableMapOf<String, StringSelectCallback>()
+    internal val interactionCallbacks = mutableMapOf<String, BuiltAction<InteractionCallback>>()
+    internal val stringSelectCallbacks = mutableMapOf<String, BuiltAction<StringSelectCallback>>()
     internal val entitySelectCallbacks =
-        mutableMapOf<String, EntitySelectCallback<out IMentionable>>()
+        mutableMapOf<String, BuiltAction<EntitySelectCallback<out IMentionable>>>()
 
-    internal var onShowHook: (() -> Unit)? = null
+    internal var onShowHook: (suspend CoroutineScope.() -> Unit)? = null
+    internal var onShowTimeout: Long = 30_000 // 30 seconds
 
     /**
      * Builds the page into the given [builder]. This modifies the builder in-place.
@@ -92,7 +95,16 @@ class PageBuilder {
     /**
      * Runs the provided [callback] when the page is first rendered
      */
-    fun onShow(callback: () -> Unit) {
+    fun onShow(
+        timeout: Long? = null,
+        units: TimeUnit? = null,
+        callback: suspend CoroutineScope.() -> Unit
+    ) {
+        if (timeout != null || units != null) {
+            checkNotNull(timeout) { "Both timeout and units must be provided" }
+            checkNotNull(units) { "Both timeout and units must be provided" }
+            this.onShowTimeout = TimeUnit.MILLISECONDS.convert(timeout, units)
+        }
         this.onShowHook = callback
     }
 }
@@ -106,10 +118,10 @@ class ActionRowBuilder : Builder<ActionRow> {
     private val buttons = mutableListOf<Button>()
     private val selects = mutableListOf<SelectMenu>()
 
-    internal val interactionCallbacks = mutableMapOf<String, InteractionCallback>()
-    internal val stringSelectCallbacks = mutableMapOf<String, StringSelectCallback>()
+    internal val interactionCallbacks = mutableMapOf<String, BuiltAction<InteractionCallback>>()
+    internal val stringSelectCallbacks = mutableMapOf<String, BuiltAction<StringSelectCallback>>()
     internal val entitySelectCallbacks =
-        mutableMapOf<String, EntitySelectCallback<out IMentionable>>()
+        mutableMapOf<String, BuiltAction<EntitySelectCallback<out IMentionable>>>()
 
 
     override fun build(): ActionRow {
@@ -127,7 +139,7 @@ class ActionRowBuilder : Builder<ActionRow> {
         val bb = ButtonBuilder(text, id).apply(builder)
         val callback = bb.onClick
         if (callback != null) {
-            interactionCallbacks[bb.id] = callback
+            interactionCallbacks[bb.id] = BuiltAction(callback, bb.timeout)
         }
         buttons.add(bb.build())
     }
@@ -140,21 +152,28 @@ class ActionRowBuilder : Builder<ActionRow> {
         val ssb = StringSelectBuilder(id).apply(builder)
         val onChange = ssb.onChange
         if (onChange != null)
-            stringSelectCallbacks[ssb.id] = onChange
-        interactionCallbacks.putAll(ssb.callbacks)
+            stringSelectCallbacks[ssb.id] = BuiltAction(onChange, ssb.timeout)
+        ssb.callbacks.forEach { (k, v) ->
+            interactionCallbacks[k] = BuiltAction(v, ssb.timeout)
+        }
         selects.add(ssb.build())
     }
 
     /**
      * Adds a mentionable select (Roles + Users) to the action row
      */
-    fun mentionableSelect(id: String? = null, builder: EntitySelectBuilder<IMentionable>.() -> Unit) {
+    fun mentionableSelect(
+        id: String? = null,
+        builder: EntitySelectBuilder<IMentionable>.() -> Unit
+    ) {
         check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
         val esb =
-            EntitySelectBuilder<IMentionable>(SelectTarget.ROLE, SelectTarget.USER, id = id).apply(builder)
+            EntitySelectBuilder<IMentionable>(SelectTarget.ROLE, SelectTarget.USER, id = id).apply(
+                builder
+            )
         val onSelect = esb.onSelect
         if (onSelect != null) {
-            entitySelectCallbacks[esb.id] = onSelect
+            entitySelectCallbacks[esb.id] = BuiltAction(onSelect, esb.timeout)
         }
         selects.add(esb.build())
     }
@@ -164,11 +183,13 @@ class ActionRowBuilder : Builder<ActionRow> {
      */
     fun userSelect(id: String? = null, builder: EntitySelectBuilder<User>.() -> Unit) {
         check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
-        val esb = EntitySelectBuilder<User>(SelectTarget.ROLE, SelectTarget.USER, id = id).apply(builder)
+        val esb =
+            EntitySelectBuilder<User>(SelectTarget.USER, id = id).apply(builder)
         val onSelect = esb.onSelect
         if (onSelect != null) {
             @Suppress("UNCHECKED_CAST")
-            entitySelectCallbacks[esb.id] = onSelect as EntitySelectCallback<out IMentionable>
+            entitySelectCallbacks[esb.id] =
+                BuiltAction(onSelect as EntitySelectCallback<out IMentionable>, esb.timeout)
         }
         selects.add(esb.build())
     }
@@ -182,7 +203,8 @@ class ActionRowBuilder : Builder<ActionRow> {
         val onSelect = esb.onSelect
         if (onSelect != null) {
             @Suppress("UNCHECKED_CAST")
-            entitySelectCallbacks[esb.id] = onSelect as EntitySelectCallback<out IMentionable>
+            entitySelectCallbacks[esb.id] =
+                BuiltAction(onSelect as EntitySelectCallback<out IMentionable>, esb.timeout)
         }
         selects.add(esb.build())
     }
@@ -190,13 +212,17 @@ class ActionRowBuilder : Builder<ActionRow> {
     /**
      * Adds a channel select to the action row
      */
-    fun channelSelect(id: String? = null, vararg type: ChannelType, builder: ChannelSelectBuilder.() -> Unit) {
+    fun channelSelect(
+        id: String? = null,
+        vararg type: ChannelType,
+        builder: ChannelSelectBuilder.() -> Unit
+    ) {
         check(buttons.size == 0) { "Can't mix selects and buttons in the same action row" }
         val esb = ChannelSelectBuilder(*type, id = id).apply(builder)
         val onSelect = esb.onSelect
         if (onSelect != null) {
             @Suppress("UNCHECKED_CAST")
-            entitySelectCallbacks[esb.id] = onSelect as EntitySelectCallback<out IMentionable>
+            entitySelectCallbacks[esb.id] = BuiltAction(onSelect as EntitySelectCallback<out IMentionable>, esb.timeout)
         }
         selects.add(esb.build())
     }
@@ -208,12 +234,15 @@ class ActionRowBuilder : Builder<ActionRow> {
  */
 @PageDsl
 class ButtonBuilder(
-    val text: String,
+    private val text: String,
     id: String? = null
 ) : Builder<Button> {
     private val log = KotlinLogging.logger { }
 
     internal var id = id ?: UUID.randomUUID().toString()
+
+
+    internal var timeout: Long = 30_000
 
     /**
      * The style of the button
@@ -261,6 +290,10 @@ class ButtonBuilder(
     override fun build(): Button {
         return Button.of(style, id, text, emoji).withDisabled(!enabled)
     }
+
+    fun setTimeout(duration: Long, timeUnit: TimeUnit) {
+        this.timeout = TimeUnit.MILLISECONDS.convert(duration, timeUnit)
+    }
 }
 
 /**
@@ -294,6 +327,13 @@ sealed class SelectBuilder {
             check(max >= min) { "Max must be greater than or equal to min" }
             field = value
         }
+
+
+    internal var timeout: Long = 30_000
+
+    fun setTimeout(timeout: Long, timeUnit: TimeUnit) {
+        this.timeout = TimeUnit.MILLISECONDS.convert(timeout, timeUnit)
+    }
 }
 
 /**
@@ -371,7 +411,11 @@ class StringSelectBuilder(
     /**
      * Adds an option of the given [value] to this select
      */
-    fun option(value: String, id: String? = null, builder: (StringSelectOptionBuilder.() -> Unit)? = null) {
+    fun option(
+        value: String,
+        id: String? = null,
+        builder: (StringSelectOptionBuilder.() -> Unit)? = null
+    ) {
         val optionBuilder = StringSelectOptionBuilder(value, id)
         builder?.invoke(optionBuilder)
         options.add(optionBuilder.build())
@@ -427,3 +471,8 @@ class StringSelectOptionBuilder(
     override fun build() =
         SelectOption.of(value, id).withDefault(default).withEmoji(icon).withDescription(description)
 }
+
+internal data class BuiltAction<T>(
+    internal val data: T,
+    internal val timeout: Long
+)
