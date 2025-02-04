@@ -18,7 +18,7 @@ version = "1.0-SNAPSHOT"
 dependencies {
     implementation(project(":"))
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.9.0-RC")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.1")
     implementation("net.dv8tion:JDA:5.3.0")
     implementation("ch.qos.logback:logback-classic:1.4.6")
     implementation("com.mrkirby153:bot-core:8.0-SNAPSHOT")

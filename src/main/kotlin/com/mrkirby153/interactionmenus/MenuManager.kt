@@ -160,10 +160,11 @@ class MenuManager(
             return
         }
 
-        val editChannel = Channel<MessageEditData?>()
+        val editChannel = Channel<MenuCallbackResult?>()
 
         suspend fun maybeRerender(
             registeredMenu: RegisteredMenu,
+            hook: MenuInteractionHook,
             force: Boolean = false,
         ) {
             if (registeredMenu.menu.dirty || force) {
@@ -171,7 +172,7 @@ class MenuManager(
                 val result = registeredMenu.menu.renderEdit(coroutineScope)
                 registeredMenu.lastActivity = System.currentTimeMillis()
                 log.trace { "Sending over channel" }
-                editChannel.send(result)
+                editChannel.send(MenuCallbackResult.Message(result))
             } else {
                 editChannel.send(null)
             }
@@ -188,9 +189,10 @@ class MenuManager(
                 when (event) {
                     is ButtonInteractionEvent -> {
                         registeredMenus.forEach {
-                            if (it.menu.triggerCallback(event.componentId, event.hook)) {
+                            val hook = MenuInteractionHook(event.hook, editChannel)
+                            if (it.menu.triggerCallback(event.componentId, hook)) {
                                 log.debug { "Triggered callback ${event.componentId}" }
-                                maybeRerender(it)
+                                maybeRerender(it, hook)
                                 log.debug { "Executed button callback ${event.componentId} for menu ${it.menu}" }
                                 it.hook = event.hook
                                 didProcess = true
@@ -201,13 +203,14 @@ class MenuManager(
 
                     is StringSelectInteractionEvent -> {
                         registeredMenus.forEach {
+                            val hook = MenuInteractionHook(event.hook, editChannel)
                             if (it.menu.triggerStringSelectCallback(
                                     event.componentId,
                                     event.selectedOptions,
-                                    event.hook
+                                    hook
                                 )
                             ) {
-                                maybeRerender(it, true)
+                                maybeRerender(it, hook, true)
                                 log.debug { "Executed string select callback ${event.componentId} for menu ${it.menu}" }
                                 it.hook = event.hook
                                 didProcess = true
@@ -218,13 +221,14 @@ class MenuManager(
 
                     is EntitySelectInteractionEvent -> {
                         registeredMenus.forEach {
+                            val hook = MenuInteractionHook(event.hook, editChannel)
                             if (it.menu.triggerEntitySelectCallback(
                                     event.componentId,
                                     event.values,
-                                    event.hook,
+                                    hook,
                                 )
                             ) {
-                                maybeRerender(it, true)
+                                maybeRerender(it, hook, true)
                                 log.debug { "Executed entity select callback ${event.componentId} for menu ${it.menu}" }
                                 it.hook = event.hook
                                 didProcess = true
@@ -240,14 +244,14 @@ class MenuManager(
                     resultsJob?.cancel()
                 }
             }
-            if(automaticDeferralThreshold != -1) {
+            if (automaticDeferralThreshold != -1) {
                 delayJob = launch {
                     // Coroutine to defer for 1 second
                     delay(automaticDeferralThreshold.toLong())
                     log.trace { "Event is taking a long time to execute. Deferring" }
                     isDeferred = true
                     event.deferEdit().await()
-                    if(notifyOnDeferral) {
+                    if (notifyOnDeferral) {
                         followMessage =
                             event.hook.sendMessage("Updating the menu is taking longer than normal. Please wait")
                                 .setEphemeral(true).await()
@@ -260,16 +264,51 @@ class MenuManager(
                 log.trace { "Got response" }
                 followMessage?.delete()?.await()
                 if (isDeferred) {
-                    if (result != null) {
-                        log.trace { "Deferred. Editing original!" }
-                        event.hook.editOriginal(result).await()
+                    when (result) {
+                        is MenuCallbackResult.Modal ->
+                            throw IllegalStateException("Cannot display a modal when deferred")
+
+                        is MenuCallbackResult.Message -> {
+                            log.trace { "Deferred. Editing original!" }
+                            event.hook.editOriginal(result.message).await()
+                        }
+
+                        null -> {}
                     }
                 } else {
-                    if (result != null) {
-                        log.trace { "Not Deferred. Editing!" }
-                        event.editMessage(result).await()
-                    } else {
-                        event.deferEdit().await()
+                    when (result) {
+                        is MenuCallbackResult.Modal -> {
+                            delayJob?.cancel()
+                            event.replyModal(result.modal).await()
+
+                            log.trace { "Second receive due to modal" }
+                            val secondResult = editChannel.receive()
+                            log.trace { "Got $secondResult" }
+
+                            when (secondResult) {
+                                is MenuCallbackResult.Message -> {
+                                    log.trace { "Not deferred. Editing" }
+                                    if(event.isAcknowledged) {
+                                        event.hook.editOriginal(secondResult.message).await()
+                                    } else {
+                                        event.editMessage(secondResult.message).await()
+                                    }
+                                }
+
+                                else -> {
+
+                                }
+                            }
+                        }
+
+                        is MenuCallbackResult.Message -> {
+                            log.trace { "Not deferred. Editing" }
+                            event.editMessage(result.message).await()
+                        }
+
+                        null -> {
+                            event.deferEdit().await()
+                        }
                     }
                 }
             }
@@ -306,5 +345,10 @@ class MenuManager(
                 log.trace { "Could not disable components for ${menu.id}: ${it.message}" }
             })
         }
+    }
+
+    sealed class MenuCallbackResult {
+        class Message(val message: MessageEditData) : MenuCallbackResult()
+        class Modal(val modal: net.dv8tion.jda.api.interactions.modals.Modal) : MenuCallbackResult()
     }
 }

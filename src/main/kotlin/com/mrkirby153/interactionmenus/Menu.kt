@@ -8,9 +8,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import mu.KotlinLogging
 import net.dv8tion.jda.api.entities.IMentionable
-import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.components.selections.SelectOption
-import net.dv8tion.jda.api.interactions.modals.Modal
 import net.dv8tion.jda.api.utils.messages.AbstractMessageBuilder
 import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder
 import net.dv8tion.jda.api.utils.messages.MessageCreateData
@@ -21,9 +19,9 @@ import java.util.concurrent.TimeUnit
 import kotlin.system.measureTimeMillis
 
 
-internal typealias InteractionCallback = suspend CoroutineScope.(InteractionHook) -> Unit
-internal typealias StringSelectCallback = suspend CoroutineScope.(InteractionHook, List<SelectOption>) -> Unit
-internal typealias EntitySelectCallback<Mentionable> = suspend CoroutineScope.(InteractionHook, List<Mentionable>) -> Unit
+internal typealias InteractionCallback = suspend CoroutineScope.(MenuInteractionHook) -> Unit
+internal typealias StringSelectCallback = suspend CoroutineScope.(MenuInteractionHook, List<SelectOption>) -> Unit
+internal typealias EntitySelectCallback<Mentionable> = suspend CoroutineScope.(MenuInteractionHook, List<Mentionable>) -> Unit
 
 private typealias PageCallback<Pages> = suspend PageBuilder.(Menu<Pages>) -> Unit
 
@@ -69,11 +67,6 @@ open class Menu<Pages : Enum<*>>(
      */
     internal var dirty = false
 
-    /**
-     * Tracks if a modal should be displayed
-     */
-    internal var displayModal: Modal? = null
-
     private var onShowPage: Pages? = null
 
     private var renderTimeout: Long = 1_000
@@ -116,13 +109,9 @@ open class Menu<Pages : Enum<*>>(
         this.renderTimeout = TimeUnit.MILLISECONDS.convert(timeout, unit)
     }
 
-    fun displayModal(modal: Modal) {
-        this.displayModal = modal
-    }
-
     internal suspend fun triggerCallback(
         id: String,
-        hook: InteractionHook,
+        hook: MenuInteractionHook,
     ): Boolean {
         val callback = callbacks[id] ?: return false
         log.trace { logMessage("Triggering button callback $id") }
@@ -144,7 +133,7 @@ open class Menu<Pages : Enum<*>>(
     internal suspend fun triggerStringSelectCallback(
         id: String,
         selected: List<SelectOption>,
-        hook: InteractionHook,
+        hook: MenuInteractionHook,
     ): Boolean {
         var executed = false
         try {
@@ -181,7 +170,7 @@ open class Menu<Pages : Enum<*>>(
     internal suspend fun triggerEntitySelectCallback(
         id: String,
         selected: List<IMentionable>,
-        hook: InteractionHook,
+        hook: MenuInteractionHook,
     ): Boolean {
         try {
             this.entitySelectCallbacks[id]?.apply {

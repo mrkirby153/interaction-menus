@@ -19,7 +19,7 @@ dependencies {
     implementation("org.apache.logging.log4j:log4j-core:2.19.0")
     implementation("io.github.microutils:kotlin-logging-jvm:3.0.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
-    compileOnly("net.dv8tion:JDA:5.0.0-beta.24")
+    compileOnly("net.dv8tion:JDA:5.3.0")
 
     compileOnly("org.springframework.boot:spring-boot-autoconfigure:3.0.7")
 }

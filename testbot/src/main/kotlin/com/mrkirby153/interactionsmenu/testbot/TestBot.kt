@@ -6,6 +6,8 @@ import com.mrkirby153.botcore.command.slashcommand.dsl.DslCommandExecutor
 import com.mrkirby153.botcore.command.slashcommand.dsl.slashCommand
 import com.mrkirby153.botcore.coroutine.await
 import com.mrkirby153.botcore.coroutine.enableCoroutines
+import com.mrkirby153.botcore.modal.ModalManager
+import com.mrkirby153.botcore.modal.await
 import com.mrkirby153.interactionmenus.Menu
 import com.mrkirby153.interactionmenus.MenuManager
 import com.mrkirby153.interactionmenus.StatefulMenu
@@ -16,6 +18,7 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeUnit
 
 private val log = KotlinLogging.logger { }
+private val modalManager = ModalManager()
 
 fun main() {
     val logger = LoggerFactory.getLogger("com.mrkirby153.interactionmenus") as Logger
@@ -36,6 +39,8 @@ fun main() {
     val menuManager = MenuManager()
     shardManager.addEventListener(menuManager)
 
+    shardManager.addEventListener(modalManager)
+
     dslExecutor.registerCommands {
         slashCommand("test-menu") {
             run {
@@ -51,6 +56,11 @@ fun main() {
         slashCommand("test-menu3") {
             run {
                 menuManager.show(timeoutMenu(), deferReply(true).await()).await()
+            }
+        }
+        slashCommand("modal") {
+            run {
+                menuManager.show(modalMenu(), deferReply(true).await()).await()
             }
         }
     }
@@ -109,6 +119,39 @@ private fun timeoutMenu() = Menu(Pages.ONE) {
         renderTimeout(50, TimeUnit.MILLISECONDS)
         delay(1_000)
         text("This is text!")
+    }
+}
+
+private fun modalMenu() = Menu(Pages.ONE) {
+    page(Pages.ONE) {
+        text("This is a modal!")
+        actionRow {
+            button("Open Modal") {
+                onClick {
+                    val modal = modalManager.build {
+                        title = "test modal"
+                        textInput("test") {
+                            name = "Testing"
+                            placeholder = "Enter something"
+                        }
+                    }
+                    it.displayModal(modal)
+                    val bla = modalManager.await(modal)
+                    bla.reply("The end").await()
+                    currentPage = Pages.TWO
+                }
+            }
+        }
+    }
+    page(Pages.TWO) {
+        text("This is the second page!")
+        actionRow {
+            button("Back") {
+                onClick {
+                    currentPage = Pages.ONE
+                }
+            }
+        }
     }
 }
 
