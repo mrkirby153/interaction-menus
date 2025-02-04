@@ -10,6 +10,7 @@ import mu.KotlinLogging
 import net.dv8tion.jda.api.entities.IMentionable
 import net.dv8tion.jda.api.interactions.InteractionHook
 import net.dv8tion.jda.api.interactions.components.selections.SelectOption
+import net.dv8tion.jda.api.interactions.modals.Modal
 import net.dv8tion.jda.api.utils.messages.AbstractMessageBuilder
 import net.dv8tion.jda.api.utils.messages.MessageCreateBuilder
 import net.dv8tion.jda.api.utils.messages.MessageCreateData
@@ -68,6 +69,11 @@ open class Menu<Pages : Enum<*>>(
      */
     internal var dirty = false
 
+    /**
+     * Tracks if a modal should be displayed
+     */
+    internal var displayModal: Modal? = null
+
     private var onShowPage: Pages? = null
 
     private var renderTimeout: Long = 1_000
@@ -108,6 +114,10 @@ open class Menu<Pages : Enum<*>>(
      */
     fun renderTimeout(timeout: Long, unit: TimeUnit) {
         this.renderTimeout = TimeUnit.MILLISECONDS.convert(timeout, unit)
+    }
+
+    fun displayModal(modal: Modal) {
+        this.displayModal = modal
     }
 
     internal suspend fun triggerCallback(

@@ -32,12 +32,16 @@ import kotlin.coroutines.EmptyCoroutineContext
  * @param gcPeriod How often the garbage collector should run
  * @param gcUnits The time units on the gcPeriod
  * @param gcPriority The priority that the garbage collector should have. Defaults to min priority
+ * @param automaticDeferralThreshold The threshold at which the menu will automatically defer. Defaults to 1000ms. Set to -1 to disable
+ * @param notifyOnDeferral Whether to notify the user that the menu is taking a long time to update. Defaults to true
  */
 class MenuManager(
     threadFactory: ThreadFactory? = null,
     gcPeriod: Long = 1,
     gcUnits: TimeUnit = TimeUnit.SECONDS,
-    gcPriority: Int = Thread.MIN_PRIORITY
+    gcPriority: Int = Thread.MIN_PRIORITY,
+    private val automaticDeferralThreshold: Int = 1000,
+    private val notifyOnDeferral: Boolean = true
 ) : EventListener {
 
     private val log = KotlinLogging.logger { }
@@ -236,15 +240,19 @@ class MenuManager(
                     resultsJob?.cancel()
                 }
             }
-            delayJob = launch {
-                // Coroutine to defer for 1 second
-                delay(1000)
-                log.trace { "Event is taking longer than 1 second to process. Deferring" }
-                isDeferred = true
-                event.deferEdit().await()
-                followMessage =
-                    event.hook.sendMessage("Updating the menu is taking longer than normal. Please wait")
-                        .setEphemeral(true).await()
+            if(automaticDeferralThreshold != -1) {
+                delayJob = launch {
+                    // Coroutine to defer for 1 second
+                    delay(automaticDeferralThreshold.toLong())
+                    log.trace { "Event is taking a long time to execute. Deferring" }
+                    isDeferred = true
+                    event.deferEdit().await()
+                    if(notifyOnDeferral) {
+                        followMessage =
+                            event.hook.sendMessage("Updating the menu is taking longer than normal. Please wait")
+                                .setEphemeral(true).await()
+                    }
+                }
             }
             resultsJob = launch {
                 log.trace { "Waiting for results" }
